@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: telegrammovies
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        value: moviesstorehdbot
+      - key: TELEGRAM_INDEX_CHANNEL_ID
+        value: "-1003522601621"
+      - key: APP_SESSION_DIR
+        value: /tmp/telegrammovies-sessions

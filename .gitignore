@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+
+vendor/
+sessions/
+composer.phar
+
+*.log
+*.madeline
+*.madeline/
+*.madeline.lock
+*.madeline.lightState.php
+
+.DS_Store
+Thumbs.db

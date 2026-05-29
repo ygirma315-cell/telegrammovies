@@ -1,0 +1,2301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Telegram Movie Scraper</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #05070c;
+            --panel: rgba(10, 16, 26, 0.94);
+            --panel-2: #0d1724;
+            --line: rgba(94, 237, 255, 0.2);
+            --line-hot: rgba(255, 66, 214, 0.3);
+            --text: #edf8ff;
+            --muted: #91a9ba;
+            --cyan: #38e7ff;
+            --pink: #ff42d6;
+            --green: #36d399;
+            --amber: #f2c94c;
+            --red: #ef4a3c;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background:
+            radial-gradient(circle at 12% 0%, rgba(56, 231, 255, 0.18) 0, transparent 28%),
+            radial-gradient(circle at 92% 12%, rgba(255, 66, 214, 0.14) 0, transparent 26%),
+            linear-gradient(135deg, #05070c 0%, #080d13 48%, #07130f 100%);
+            color: var(--text); display: flex; justify-content: center; padding: 28px 16px; min-height: 100vh; }
+        .container { width: min(1180px, 100%); background: linear-gradient(180deg, rgba(13, 23, 36, 0.96), rgba(8, 13, 22, 0.96)); padding: 24px; border-radius: 8px; border: 1px solid var(--line); box-shadow: 0 0 42px rgba(56, 231, 255, 0.11), 0 0 70px rgba(255, 66, 214, 0.08); }
+        h2 { margin-bottom: 0; text-align: left; letter-spacing: 0; }
+        h3 { font-size: 15px; margin-bottom: 10px; color: #b7c8d8; }
+        .login-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 16px; }
+        .login-panel { border: 1px solid #2a3a4b; border-radius: 8px; padding: 16px; background: #13202a; }
+        input, button, textarea { width: 100%; padding: 12px; margin: 8px 0; border: none; border-radius: 6px; font-size: 16px; }
+        input, textarea { background: #08111c; color: #e9edef; border: 1px solid #254157; outline: none; }
+        input:focus, textarea:focus { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(54, 227, 255, 0.12), 0 0 22px rgba(56, 231, 255, 0.08); }
+        button { background: linear-gradient(135deg, #216a96, #314f9f); color: white; cursor: pointer; font-weight: bold; border: 1px solid rgba(91, 212, 255, 0.16); transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease; }
+        button:hover { transform: translateY(-1px); box-shadow: 0 0 22px rgba(41, 217, 255, 0.16); border-color: rgba(91, 212, 255, 0.5); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .secondary { background: linear-gradient(135deg, #177563, #1f875f); }
+        .secondary:hover { background: linear-gradient(135deg, #1b8b76, #25a06f); }
+        .danger { background: linear-gradient(135deg, #b53328, #8d1d44); }
+        .danger:hover { background: linear-gradient(135deg, #d13b2f, #a92352); }
+        .ghost { background: #121d2c; }
+        .app-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid rgba(145, 169, 186, 0.14); }
+        .app-header .danger { width: auto; min-width: 110px; margin: 0; }
+        .eyebrow { color: var(--cyan); font-size: 12px; font-weight: 800; letter-spacing: 0; margin-bottom: 5px; }
+        .home-title { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 14px; color: var(--muted); font-size: 13px; }
+        .tool-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin: 10px 0 18px; }
+        .tool-card { position: relative; min-height: 168px; text-align: left; padding: 18px; background: linear-gradient(145deg, rgba(9, 27, 38, 0.98), rgba(28, 14, 36, 0.88)); border: 1px solid rgba(96, 224, 255, 0.22); border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03); overflow: hidden; }
+        .tool-card::before { content: ""; position: absolute; inset: 0; border-top: 2px solid rgba(56, 231, 255, 0.62); opacity: 0.7; pointer-events: none; }
+        .tool-card:hover { transform: translateY(-4px); box-shadow: 0 0 28px rgba(50, 231, 255, 0.22), 0 0 24px rgba(255, 55, 210, 0.14); border-color: rgba(88, 230, 255, 0.72); }
+        .tool-card strong { display: block; font-size: 17px; margin: 34px 0 10px; color: #effbff; }
+        .tool-card span { display: block; color: #9fb7cc; font-size: 13px; line-height: 1.35; font-weight: 600; }
+        .card-number { position: absolute; top: 14px; left: 16px; color: var(--pink); font-size: 12px; font-weight: 900; }
+        .card-badge { position: absolute; top: 14px; right: 14px; width: auto; color: var(--amber); font-size: 11px; font-weight: 800; }
+        .tool-card.disabled { opacity: 0.58; cursor: not-allowed; }
+        .workspace-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .workspace-head h3 { margin: 0; color: #dff8ff; }
+        .workspace-head button { width: auto; min-width: 96px; margin: 0; padding: 9px 12px; }
+        .workspace-grid { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); gap: 14px; align-items: start; }
+        .tool-panel { border: 1px solid rgba(96, 224, 255, 0.16); border-radius: 8px; padding: 14px; background: linear-gradient(180deg, rgba(13, 24, 36, 0.98), rgba(8, 15, 23, 0.98)); }
+        .field-label { display: block; color: var(--muted); font-size: 12px; font-weight: 800; margin: 8px 0 0; }
+        .field-hint { color: var(--muted); font-size: 12px; min-height: 16px; }
+        .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .panel-head h3 { margin: 0; color: #dff8ff; }
+        .batch-pill { color: var(--cyan); border: 1px solid rgba(56, 231, 255, 0.24); border-radius: 4px; padding: 4px 8px; font-size: 12px; font-weight: 800; }
+        .list-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        .list-actions button { margin: 0; font-size: 13px; }
+        .primary-action { margin-top: 10px; background: linear-gradient(135deg, #1b8f78, #275fc5); }
+        .status-strip { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 10px; min-height: 24px; }
+        .status-strip .manage-status { margin: 0; }
+        .selection-count { color: var(--cyan); font-size: 12px; font-weight: 800; white-space: nowrap; }
+        .mini-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 10px 0; }
+        .stat-box { min-height: 94px; padding: 12px; border: 1px solid rgba(96, 224, 255, 0.16); border-radius: 8px; background: #08111c; }
+        .stat-box span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; }
+        .stat-box strong { display: block; margin-top: 8px; color: #f6fcff; font-size: 26px; overflow-wrap: anywhere; }
+        .stat-wide { grid-column: span 2; }
+        .index-controls { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; align-items: end; }
+        .index-controls input { margin: 0; }
+        .index-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+        .index-actions button { margin: 0; }
+        .index-select-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+        .index-select-actions button, .index-select-actions input { margin: 0; }
+        .index-preview { max-height: 360px; overflow-y: auto; display: grid; gap: 8px; }
+        .preview-batch { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; border: 1px solid rgba(96, 224, 255, 0.14); background: #08111c; border-radius: 8px; padding: 10px; }
+        .preview-batch input { width: auto; margin: 4px 0 0; }
+        .preview-batch strong { display: block; margin-bottom: 6px; color: #f6fcff; }
+        .preview-batch span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+        .preview-batch.posted { opacity: 0.65; border-color: rgba(54, 211, 153, 0.22); }
+        .run-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+        .run-summary div { border: 1px solid rgba(96, 224, 255, 0.14); border-radius: 8px; padding: 10px; background: #07101a; }
+        .run-summary span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; }
+        .run-summary strong { display: block; margin-top: 5px; font-size: 20px; color: var(--cyan); }
+        .member-link-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 8px; margin-top: 10px; }
+        .member-link-row input, .member-link-row button { margin: 0; }
+        .safety-note { border: 1px solid rgba(54, 211, 153, 0.24); background: rgba(54, 211, 153, 0.08); color: #b9f7df; border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 13px; line-height: 1.4; }
+        .list-results { max-height: 410px; overflow-y: auto; display: grid; gap: 8px; padding-right: 4px; }
+        .list-item { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; background: #0b1520; border: 1px solid #244156; border-radius: 8px; padding: 10px; }
+        .list-item:hover { border-color: #38dfff; box-shadow: 0 0 18px rgba(56, 223, 255, 0.12); }
+        .list-item input { width: auto; margin-top: 4px; }
+        .list-title { color: #f2fbff; font-weight: 700; overflow-wrap: anywhere; }
+        .list-meta { color: #8fb3c8; font-size: 12px; margin-top: 4px; overflow-wrap: anywhere; }
+        .empty-state { color: #8fb3c8; border: 1px dashed #31506a; border-radius: 8px; padding: 16px; text-align: center; }
+        .button-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+        .button-row button { margin: 0; }
+        .source-panel { border: 1px solid #263544; border-radius: 6px; padding: 10px; background: #101b25; margin-bottom: 8px; }
+        .source-mode { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
+        .source-mode button { margin: 0; padding: 10px; background: #24384a; font-size: 14px; }
+        .source-mode button.active { background: #4c7d64; }
+        .source-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+        .source-actions button { margin: 0; font-size: 13px; padding: 9px; }
+        .source-options { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 6px; }
+        .source-options input { margin: 0; font-size: 14px; padding: 10px; }
+        .source-meta { display: flex; justify-content: space-between; gap: 12px; min-height: 18px; color: #b7c8d8; font-size: 13px; margin-top: 6px; }
+        .remember-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: #b7c8d8; font-size: 14px; }
+        .remember-row input { width: auto; margin: 0; }
+        .hidden { display: none; }
+        .progress-panel { background: #0e1621; border: 1px solid #263544; border-radius: 6px; padding: 10px; margin-top: 10px; }
+        .progress-summary { display: flex; justify-content: space-between; gap: 12px; color: #b7c8d8; font-size: 14px; margin-bottom: 8px; }
+        .progress-track { height: 10px; background: #242f3d; border-radius: 999px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background: #4caf50; transition: width 180ms ease; }
+        .manage-panel { background: #13202a; border: 1px solid #263544; border-radius: 6px; padding: 12px; margin-top: 12px; }
+        .manage-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        .manage-row button { margin: 0; font-size: 14px; }
+        .manage-status { min-height: 20px; margin-top: 8px; color: #b7c8d8; font-size: 14px; }
+        .target-history { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+        .target-chip { width: auto; margin: 0; padding: 7px 10px; border-radius: 999px; background: #24384a; color: #dce8f2; font-size: 13px; font-weight: 600; }
+        .target-chip:hover { background: #31506a; }
+        .progress-log { max-height: 200px; overflow-y: auto; background: #050b12; border: 1px solid rgba(96, 224, 255, 0.13); padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 14px; }
+        .log-item { margin: 4px 0; }
+        .success { color: #4caf50; }
+        .error { color: #f44336; }
+        .info { color: #8bc34a; }
+        @media (max-width: 680px) {
+            .container { max-width: 400px; }
+            .login-grid { grid-template-columns: 1fr; }
+            .button-row, .manage-row, .source-mode, .source-actions, .source-options, .tool-grid, .workspace-grid, .list-actions, .mini-grid, .index-controls, .index-actions, .index-select-actions, .run-summary, .member-link-row { grid-template-columns: 1fr; }
+            .stat-wide { grid-column: auto; }
+        }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen">
+        <h2>Login with Telegram</h2>
+        <div class="login-grid">
+            <div class="login-panel">
+                <h3>Saved Login</h3>
+                <button class="secondary" onclick="continueSavedLogin()">Continue Saved Login</button>
+                <p id="savedStatus" class="info"></p>
+            </div>
+            <div class="login-panel">
+                <h3>Phone Code</h3>
+                <input type="text" id="phone" placeholder="Phone number (e.g., +1234567890)">
+                <label class="remember-row">
+                    <input type="checkbox" id="rememberLogin" checked>
+                    Remember this login
+                </label>
+                <button onclick="loginPhone()">Send Code</button>
+                <div id="codeArea" class="hidden">
+                    <input type="text" id="code" placeholder="Verification code">
+                    <button onclick="loginCode()">Verify Code</button>
+                </div>
+                <div id="twoFAArea" class="hidden">
+                    <input type="password" id="password2FA" placeholder="2FA Password">
+                    <button onclick="login2FA()">Submit 2FA</button>
+                </div>
+            </div>
+        </div>
+        <p id="loginError" class="error"></p>
+    </div>
+
+    <!-- DASHBOARD (after login) -->
+    <div id="dashboard" class="hidden">
+        <div class="app-header">
+            <div>
+                <p class="eyebrow">CONTROL CENTER</p>
+                <h2>Telegram Movie Scraper</h2>
+            </div>
+            <button onclick="logout()" class="danger">Logout</button>
+        </div>
+        <div id="homeTitle" class="home-title">
+            <strong>Choose a workspace</strong>
+            <span>Saved sources stay local in this browser.</span>
+        </div>
+        <div id="toolHome" class="tool-grid">
+            <button class="tool-card" onclick="openTool('channel')">
+                <span class="card-number">01</span>
+                <strong>Channel List Bot Fetch</strong>
+                <span>Channel posts, bot redirects, selected files.</span>
+            </button>
+            <button class="tool-card" onclick="openTool('titles')">
+                <span class="card-number">02</span>
+                <strong>Title Search</strong>
+                <span>Titles, sources, fast saved results.</span>
+            </button>
+            <button class="tool-card" type="button" onclick="openTool('status')">
+                <span class="card-number">03</span>
+                <strong>Status</strong>
+                <span>Bot, channel, catalog, files, and batch counts.</span>
+            </button>
+            <button class="tool-card" type="button" onclick="openTool('index')">
+                <span class="card-number">04</span>
+                <strong>Index Poster</strong>
+                <span>Alphabet batches with bot links and stop control.</span>
+            </button>
+            <button class="tool-card" type="button" onclick="openTool('members')">
+                <span class="card-number">05</span>
+                <strong>Member Growth</strong>
+                <span>Invite links, counts, and opt-in join requests.</span>
+            </button>
+        </div>
+        <div id="channelTool" class="hidden">
+            <div class="workspace-head">
+                <h3>Channel List Bot Fetch</h3>
+                <button class="ghost" onclick="openTool('home')">Back</button>
+            </div>
+            <div class="workspace-grid">
+                <div class="tool-panel">
+                    <label class="field-label" for="channelListSource">Channel or group</label>
+                    <input type="text" id="channelListSource" placeholder="Channel or group (e.g., @Films_433)">
+                    <label class="field-label" for="channelListBot">Preferred bot</label>
+                    <input type="text" id="channelListBot" placeholder="Preferred bot (e.g., @Filestore23bot)" value="@Filestore23bot">
+                    <label class="field-label" for="channelListLimit">Batch size</label>
+                    <input type="number" id="channelListLimit" min="5" max="80" value="30" title="Batch size">
+                    <div class="list-actions">
+                        <button id="channelFetchButton" onclick="fetchChannelLists(true)">Fetch</button>
+                        <button id="channelNextButton" class="secondary" onclick="fetchChannelLists(false)" disabled>Next Batch</button>
+                        <button id="channelSelectAllButton" class="secondary" onclick="toggleListSelection(true)" disabled>Select All</button>
+                        <button id="channelClearSelectedButton" class="danger" onclick="toggleListSelection(false)" disabled>Clear</button>
+                    </div>
+                    <button id="channelImportSelectedButton" class="primary-action" onclick="importSelectedLists()" disabled>Import Selected</button>
+                    <div class="status-strip">
+                        <div id="channelListStatus" class="manage-status">No batch loaded.</div>
+                        <div id="channelSelectionCount" class="selection-count">0 selected</div>
+                    </div>
+                    <div class="field-hint">Leave the channel empty to use the first saved source.</div>
+                </div>
+                <div class="tool-panel">
+                    <div class="panel-head">
+                        <h3>Choose Lists</h3>
+                        <span id="channelBatchLabel" class="batch-pill">Batch 0</span>
+                    </div>
+                    <div id="channelListResults" class="list-results">
+                        <div class="empty-state">Fetch a channel batch to choose list rows.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="progress-log" id="channelProgressLog">
+            <div id="channelLogContent"></div>
+        </div>
+        <div id="statusTool" class="hidden">
+            <div class="workspace-head">
+                <h3>Status</h3>
+                <button class="ghost" onclick="openTool('home')">Back</button>
+            </div>
+            <div class="tool-panel">
+                <div class="panel-head">
+                    <h3>Live Counts</h3>
+                    <button class="secondary" type="button" onclick="refreshStatusOverview()">Refresh</button>
+                </div>
+                <div class="mini-grid">
+                    <div class="stat-box">
+                        <span>Movies</span>
+                        <strong id="statusMovies">0</strong>
+                    </div>
+                    <div class="stat-box">
+                        <span>Files</span>
+                        <strong id="statusFiles">0</strong>
+                    </div>
+                    <div class="stat-box">
+                        <span>Index Subs</span>
+                        <strong id="statusSubscribers">-</strong>
+                    </div>
+                    <div class="stat-box">
+                        <span>Bot Followers</span>
+                        <strong id="statusFollowers">N/A</strong>
+                    </div>
+                    <div class="stat-box stat-wide">
+                        <span>Bot</span>
+                        <strong id="statusBot">@moviesstorehdbot</strong>
+                    </div>
+                    <div class="stat-box stat-wide">
+                        <span>Main Channel</span>
+                        <strong id="statusChannel">-</strong>
+                    </div>
+                    <div class="stat-box">
+                        <span>Catalog Items</span>
+                        <strong id="statusCatalogEntries">0</strong>
+                    </div>
+                    <div class="stat-box">
+                        <span>Index Batches</span>
+                        <strong id="statusIndexBatches">0</strong>
+                    </div>
+                </div>
+                <div id="statusNote" class="manage-status">Open Status to refresh counts.</div>
+            </div>
+        </div>
+        <div id="indexTool" class="hidden">
+            <div class="workspace-head">
+                <h3>Index Poster</h3>
+                <button class="ghost" onclick="openTool('home')">Back</button>
+            </div>
+            <div class="workspace-grid">
+                <div class="tool-panel">
+                    <label class="field-label" for="indexMainChannel">Main channel mention</label>
+                    <input type="text" id="indexMainChannel" placeholder="Auto, @yourchannel, or channel name">
+                    <div class="index-controls">
+                        <div>
+                            <label class="field-label" for="indexBatchSize">Movies per batch</label>
+                            <input type="number" id="indexBatchSize" min="1" max="30" value="10">
+                        </div>
+                        <button class="secondary" type="button" onclick="loadIndexPreview()">Preview</button>
+                    </div>
+                    <div class="index-controls">
+                        <div>
+                            <label class="field-label" for="indexCooldownEvery">Rest every batches</label>
+                            <input type="number" id="indexCooldownEvery" min="0" max="50" value="8">
+                        </div>
+                        <div>
+                            <label class="field-label" for="indexCooldownSeconds">Rest seconds</label>
+                            <input type="number" id="indexCooldownSeconds" min="0" max="600" value="45">
+                        </div>
+                    </div>
+                    <div class="index-select-actions">
+                        <input type="number" id="indexStartBatch" min="1" value="1" title="Start batch">
+                        <button class="secondary" type="button" onclick="selectIndexBatchesFromStart()">Select From</button>
+                        <button class="secondary" type="button" onclick="toggleIndexBatchSelection(true)">Select All</button>
+                        <button class="danger" type="button" onclick="toggleIndexBatchSelection(false)">Clear</button>
+                    </div>
+                    <div class="index-actions">
+                        <button id="continueIndexButton" type="button" onclick="postIndexBatchesStream('resume')">Continue</button>
+                        <button id="postIndexButton" class="secondary" type="button" onclick="postIndexBatchesStream('fresh')">Start Fresh</button>
+                        <button id="pauseIndexButton" class="danger" type="button" onclick="pauseIndexPosting()" disabled>Pause</button>
+                        <button class="danger" type="button" onclick="clearIndexChannel()">Clear Index</button>
+                    </div>
+                    <div id="indexStatus" class="manage-status">Preview before posting.</div>
+                    <div class="run-summary">
+                        <div>
+                            <span>Batches Done</span>
+                            <strong id="indexBatchesDone">0/0</strong>
+                        </div>
+                        <div>
+                            <span>Movies Indexed</span>
+                            <strong id="indexMoviesDone">0</strong>
+                        </div>
+                        <div>
+                            <span>Current</span>
+                            <strong id="indexCurrentBatch">Idle</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="tool-panel">
+                    <div class="panel-head">
+                        <h3>Alphabet Preview</h3>
+                        <span id="indexPreviewBadge" class="batch-pill">0 batches</span>
+                    </div>
+                    <div id="indexPreview" class="index-preview">
+                        <div class="empty-state">Load a preview to see A, B, C batches.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="progress-log" id="indexProgressLog">
+                <div id="indexLogContent"></div>
+            </div>
+        </div>
+        <div id="memberTool" class="hidden">
+            <div class="workspace-head">
+                <h3>Member Growth</h3>
+                <button class="ghost" onclick="openTool('home')">Back</button>
+            </div>
+            <div class="workspace-grid">
+                <div class="tool-panel">
+                    <div class="safety-note">
+                        Separate from the movie bot: this uses your logged-in Telegram session to inspect public channel/group info and create opt-in invite links only. It does not scrape member IDs or force-add users.
+                    </div>
+                    <label class="field-label" for="memberTarget">Public channel/group or your target</label>
+                    <input type="text" id="memberTarget" placeholder="@publicchannel, @yourgroup, or -100..." value="@movieshddddd2">
+                    <label class="field-label" for="memberInviteName">Invite name</label>
+                    <input type="text" id="memberInviteName" placeholder="Campaign name">
+                    <div class="index-controls">
+                        <div>
+                            <label class="field-label" for="memberLimit">Member limit</label>
+                            <input type="number" id="memberLimit" min="0" max="99999" value="0">
+                        </div>
+                        <div>
+                            <label class="field-label" for="memberExpireHours">Expire hours</label>
+                            <input type="number" id="memberExpireHours" min="0" max="720" value="0">
+                        </div>
+                    </div>
+                    <label class="remember-row">
+                        <input type="checkbox" id="memberJoinRequest">
+                        Require join request
+                    </label>
+                    <div class="index-actions">
+                        <button class="secondary" type="button" onclick="refreshMemberGrowth()">Refresh</button>
+                        <button type="button" onclick="createMemberInvite()">Create Invite</button>
+                    </div>
+                    <div id="memberStatus" class="manage-status">Ready.</div>
+                    <div class="member-link-row">
+                        <input type="text" id="memberInviteLink" readonly placeholder="Invite link appears here">
+                        <button class="secondary" type="button" onclick="copyMemberInvite()">Copy</button>
+                    </div>
+                </div>
+                <div class="tool-panel">
+                    <div class="mini-grid">
+                        <div class="stat-box stat-wide">
+                            <span>Target</span>
+                            <strong id="memberTargetName">-</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Members</span>
+                            <strong id="memberCount">-</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Mode</span>
+                            <strong id="memberMode">Invite</strong>
+                        </div>
+                        <div class="stat-box">
+                            <span>Force Add</span>
+                            <strong>Off</strong>
+                        </div>
+                    </div>
+                    <div class="progress-log">
+                        <div id="memberLogContent"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="titleTool" class="hidden">
+            <div class="workspace-head">
+                <h3>Title Search</h3>
+                <button class="ghost" onclick="openTool('home')">Back</button>
+            </div>
+        <div class="source-panel">
+            <div class="source-mode">
+                <button id="modeManual" type="button" onclick="setSourceMode('manual')">Manual</button>
+                <button id="modeSaved" type="button" onclick="setSourceMode('saved')">Saved</button>
+                <button id="modeGlobal" type="button" onclick="setSourceMode('global')">Global</button>
+            </div>
+            <textarea id="targetUsername" rows="2" placeholder="Allowed sources: @bot, @channel, https://t.me/channel, or all saved"></textarea>
+            <div class="source-actions">
+                <button class="secondary" type="button" onclick="discoverSources()">Discover</button>
+                <button class="secondary" type="button" onclick="useAllSavedSources()">Use Saved</button>
+                <button class="danger" type="button" onclick="clearSavedSources()">Clear Saved</button>
+            </div>
+            <div id="targetHistory" class="target-history"></div>
+            <div class="source-meta">
+                <span id="sourceCount">0 saved sources</span>
+                <span id="sourceModeLabel">Manual</span>
+            </div>
+        </div>
+        <textarea id="movieTitles" rows="5" placeholder="Enter movie titles (one per line)"></textarea>
+        <div class="button-row">
+            <button id="startButton" onclick="startScraping()">Start Titles</button>
+            <button id="pauseButton" class="secondary hidden" onclick="pauseOrResumeScraping()">Pause</button>
+            <button id="stopButton" class="danger hidden" onclick="stopScraping()">Stop Now</button>
+        </div>
+        <div id="progressPanel" class="progress-panel hidden">
+            <div class="progress-summary">
+                <span id="progressText">0/0 titles</span>
+                <span id="progressCounts">Found 0 | Stored 0 files | Already 0</span>
+            </div>
+            <div class="progress-track">
+                <div id="progressBar" class="progress-fill"></div>
+            </div>
+        </div>
+        <div class="manage-panel">
+            <h3>Catalog</h3>
+            <div class="manage-row">
+                <button class="secondary" onclick="rebuildCatalog()">Rebuild Catalog</button>
+                <button class="secondary" onclick="repairCatalog()">Repair Refs</button>
+            </div>
+            <div id="manageStatus" class="manage-status">Catalog: checking...</div>
+        </div>
+        <div class="progress-log" id="progressLog">
+            <div id="logContent"></div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let phoneCodeHash = '';
+let scrapeController = null;
+let scrapeJob = null;
+let scrapeJobId = 0;
+let botPollTimer = null;
+let botPollBusy = false;
+let sourceMode = 'manual';
+let channelListState = {
+    target: '',
+    offsetId: 0,
+    items: [],
+    hasMore: false,
+    batch: 0,
+    busy: false
+};
+let channelImportRun = {total: 0, done: 0, files: 0};
+let indexController = null;
+let indexRun = {total: 0, posted: 0, movies: 0, current: 'Idle'};
+const rememberKey = 'telegramMovieScraperRememberLogin';
+const targetHistoryKey = 'telegramMovieScraperTargetHistory';
+const importedListKey = 'telegramMovieScraperImportedListKeysV2';
+
+window.onload = async () => {
+    let remember = localStorage.getItem(rememberKey);
+    document.getElementById('rememberLogin').checked = remember !== 'no';
+
+    if (remember !== 'no') {
+        await continueSavedLogin(true);
+    }
+};
+
+function saveRememberChoice() {
+    let remember = document.getElementById('rememberLogin').checked;
+    localStorage.setItem(rememberKey, remember ? 'yes' : 'no');
+}
+
+async function continueSavedLogin(silent = false) {
+    let status = document.getElementById('savedStatus');
+    if (!silent) status.textContent = 'Checking...';
+
+    try {
+        let res = await fetch('server.php?action=check_session');
+        let data = await res.json();
+        if (data.authorized) {
+            localStorage.setItem(rememberKey, 'yes');
+            showDashboard();
+            return;
+        }
+        if (!silent) status.textContent = 'No saved login found.';
+    } catch (error) {
+        if (!silent) status.textContent = 'Saved login check failed.';
+    }
+}
+
+async function loginPhone() {
+    let phone = document.getElementById('phone').value;
+    saveRememberChoice();
+    let res = await fetch('server.php?action=login_phone', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'phone=' + encodeURIComponent(phone)
+    });
+    let data = await res.json();
+    if (data.authorized) {
+        saveRememberChoice();
+        showDashboard();
+    } else if (data.success) {
+        phoneCodeHash = data.phone_code_hash;
+        document.getElementById('codeArea').classList.remove('hidden');
+    } else {
+        document.getElementById('loginError').textContent = data.error || 'Failed to send code';
+    }
+}
+
+async function loginCode() {
+    let code = document.getElementById('code').value;
+    let res = await fetch('server.php?action=login_code', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'code=' + encodeURIComponent(code) + '&phone_code_hash=' + encodeURIComponent(phoneCodeHash)
+    });
+    let data = await res.json();
+    if (data.password_needed) {
+        document.getElementById('codeArea').classList.add('hidden');
+        document.getElementById('twoFAArea').classList.remove('hidden');
+    } else if (data.success && data.authorized) {
+        saveRememberChoice();
+        showDashboard();
+    } else if (data.error && data.error.includes('SESSION_PASSWORD_NEEDED')) {
+        document.getElementById('codeArea').classList.add('hidden');
+        document.getElementById('twoFAArea').classList.remove('hidden');
+    } else {
+        document.getElementById('loginError').textContent = data.error || 'Invalid code';
+    }
+}
+
+async function login2FA() {
+    let password = document.getElementById('password2FA').value;
+    let res = await fetch('server.php?action=login_2fa', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'password=' + encodeURIComponent(password)
+    });
+    let data = await res.json();
+    if (data.success) {
+        saveRememberChoice();
+        showDashboard();
+    } else {
+        document.getElementById('loginError').textContent = data.error || 'Wrong 2FA password';
+    }
+}
+
+function showDashboard() {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    renderTargetHistory();
+    setSourceMode(readTargetHistory().length ? 'saved' : 'manual');
+    openTool('home');
+    refreshCatalogStatus();
+    startBotPolling();
+}
+
+function openTool(tool) {
+    let home = document.getElementById('toolHome');
+    let homeTitle = document.getElementById('homeTitle');
+    let channel = document.getElementById('channelTool');
+    let title = document.getElementById('titleTool');
+    let status = document.getElementById('statusTool');
+    let index = document.getElementById('indexTool');
+    let members = document.getElementById('memberTool');
+    let channelLog = document.getElementById('channelProgressLog');
+
+    home.classList.toggle('hidden', tool !== 'home');
+    if (homeTitle) homeTitle.classList.toggle('hidden', tool !== 'home');
+    channel.classList.toggle('hidden', tool !== 'channel');
+    title.classList.toggle('hidden', tool !== 'titles');
+    if (status) status.classList.toggle('hidden', tool !== 'status');
+    if (index) index.classList.toggle('hidden', tool !== 'index');
+    if (members) members.classList.toggle('hidden', tool !== 'members');
+    if (channelLog) channelLog.classList.toggle('hidden', tool !== 'channel');
+
+    if (tool === 'channel') {
+        let source = document.getElementById('targetUsername')?.value || '';
+        let parsed = parseTargetUsernames(source);
+        if (!document.getElementById('channelListSource').value && parsed.length) {
+            document.getElementById('channelListSource').value = parsed[0];
+        } else if (!document.getElementById('channelListSource').value) {
+            let saved = readTargetHistory()[0] || '';
+            if (saved) document.getElementById('channelListSource').value = saved;
+        }
+        updateChannelControls();
+    }
+    if (tool === 'status') {
+        refreshStatusOverview();
+    }
+    if (tool === 'index') {
+        refreshStatusOverview();
+        loadIndexPreview();
+    }
+    if (tool === 'members') {
+        refreshStatusOverview();
+        refreshMemberGrowth();
+    }
+}
+
+function setSourceMode(mode) {
+    sourceMode = ['manual', 'saved', 'global', 'import'].includes(mode) ? mode : 'manual';
+    let input = document.getElementById('targetUsername');
+
+    if (sourceMode === 'saved') {
+        input.value = 'all';
+    } else if (sourceMode === 'global') {
+        input.value = 'global';
+    } else if (sourceMode === 'import') {
+        if (['all', '*', 'global'].includes(input.value.trim().toLowerCase())) input.value = '';
+    } else if (['all', '*', 'global'].includes(input.value.trim().toLowerCase())) {
+        input.value = '';
+    }
+
+    updateSourceModeButtons();
+}
+
+function updateSourceModeButtons() {
+    for (let mode of ['Manual', 'Saved', 'Global', 'Import']) {
+        let button = document.getElementById(`mode${mode}`);
+        if (button) button.classList.toggle('active', sourceMode === mode.toLowerCase());
+    }
+    let label = document.getElementById('sourceModeLabel');
+    if (label) label.textContent = sourceMode.charAt(0).toUpperCase() + sourceMode.slice(1);
+}
+
+function normalizeTargetUsername(username) {
+    let target = String(username || '').trim();
+    if (!target) return '';
+    target = target.replace(/^https?:\/\/(?:www\.)?(?:t|telegram)\.me\//i, '@');
+    target = target.replace(/^(?:t|telegram)\.me\//i, '@');
+    target = target.split(/[?#]/)[0];
+    target = target.replace(/\/.*$/, '');
+    target = target.replace(/\s+/g, '');
+    if (target && !target.startsWith('@') && !/^-?\d+$/.test(target)) {
+        target = '@' + target;
+    }
+    return target;
+}
+
+function parseTargetUsernames(value) {
+    let seen = new Set();
+    return String(value || '')
+        .split(/[\r\n,;]+/)
+        .map(normalizeTargetUsername)
+        .filter(target => {
+            let key = target.toLowerCase();
+            if (!target || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+function resolveScrapeTargets(value) {
+    let raw = String(value || '').trim();
+    let mode = raw.toLowerCase();
+    let explicitTargets = parseTargetUsernames(raw);
+
+    if (!raw || mode === 'all' || mode === '*' || mode === 'global') {
+        return readTargetHistory().filter(Boolean);
+    }
+
+    return explicitTargets;
+}
+
+function mergeTargets(...groups) {
+    let seen = new Set();
+    let merged = [];
+    for (let group of groups) {
+        for (let target of group || []) {
+            target = normalizeTargetUsername(target);
+            let key = target.toLowerCase();
+            if (!target || seen.has(key)) continue;
+            seen.add(key);
+            merged.push(target);
+        }
+    }
+    return merged;
+}
+
+function readTargetHistory() {
+    try {
+        let value = JSON.parse(localStorage.getItem(targetHistoryKey) || '[]');
+        return Array.isArray(value) ? value.filter(Boolean) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function saveTargetUsername(username) {
+    saveTargetUsernames([username]);
+}
+
+function saveTargetUsernames(usernames) {
+    let targets = usernames.flatMap(parseTargetUsernames);
+    if (!targets.length) return;
+
+    let targetKeys = new Set(targets.map(target => target.toLowerCase()));
+    let history = readTargetHistory().filter(item => !targetKeys.has(item.toLowerCase()));
+    history.unshift(...targets);
+    localStorage.setItem(targetHistoryKey, JSON.stringify(history.slice(0, 24)));
+    renderTargetHistory();
+}
+
+async function useTargetUsername(username) {
+    let target = normalizeTargetUsername(username);
+    document.getElementById('targetUsername').value = target;
+    try {
+        await navigator.clipboard.writeText(target);
+        setManageStatus(`Target copied: ${target}`, 'success');
+    } catch (error) {
+        setManageStatus(`Target selected: ${target}`, 'success');
+    }
+}
+
+function renderTargetHistory() {
+    let history = readTargetHistory();
+    let container = document.getElementById('targetHistory');
+    if (!container) return;
+
+    container.innerHTML = history.slice(0, 8)
+        .map(target => `<button type="button" class="target-chip" data-target="${escapeHtml(target)}" onclick="useTargetUsername(this.dataset.target)">${escapeHtml(target)}</button>`)
+        .join('');
+
+    let count = document.getElementById('sourceCount');
+    if (count) count.textContent = `${history.length} saved source${history.length === 1 ? '' : 's'}`;
+    updateSourceModeButtons();
+}
+
+function useAllSavedSources() {
+    let history = readTargetHistory();
+    document.getElementById('targetUsername').value = history.length ? 'all' : '';
+    setSourceMode(history.length ? 'saved' : 'manual');
+    setManageStatus(history.length ? `Using ${history.length} saved source(s)` : 'No saved sources yet', history.length ? 'success' : 'error');
+}
+
+function clearSavedSources() {
+    if (!confirm('Clear saved source history?')) return;
+    localStorage.removeItem(targetHistoryKey);
+    renderTargetHistory();
+    setSourceMode('manual');
+    setManageStatus('Saved sources cleared.', 'info');
+}
+
+async function discoverSources() {
+    setManageStatus('Discovering accessible Telegram sources...');
+    try {
+        let data = await apiAction('discover_sources', {limit: 120});
+        if (!data.success) {
+            setManageStatus(data.error || 'Source discovery failed', 'error');
+            return;
+        }
+
+        let targets = (data.sources || []).map(source => source.target).filter(Boolean);
+        saveTargetUsernames(targets);
+        setSourceMode('saved');
+        setManageStatus(`Imported ${targets.length} accessible source(s)`, targets.length ? 'success' : 'info');
+    } catch (error) {
+        setManageStatus('Source discovery failed', 'error');
+    }
+}
+
+async function globalSourcesForTitles(titles) {
+    setManageStatus('Running global Telegram lookup...');
+    let data = await apiAction('global_sources', {
+        titles: titles.join('\n'),
+        limit: 12
+    });
+
+    if (!data.success) {
+        throw new Error(data.error || 'Global lookup failed');
+    }
+
+    let targets = (data.sources || []).map(source => source.target).filter(Boolean);
+    saveTargetUsernames(targets);
+    setManageStatus(`Global lookup found ${targets.length} source(s)`, targets.length ? 'success' : 'error');
+    return targets;
+}
+
+function readImportedListKeys() {
+    try {
+        let value = JSON.parse(localStorage.getItem(importedListKey) || '[]');
+        return Array.isArray(value) ? value.filter(Boolean) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function saveImportedListKeys(keys) {
+    let merged = new Set(readImportedListKeys());
+    for (let key of keys) {
+        if (key) merged.add(key);
+    }
+    localStorage.setItem(importedListKey, JSON.stringify([...merged].slice(-1000)));
+}
+
+function setChannelListStatus(message, className = '') {
+    let status = document.getElementById('channelListStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.className = `manage-status ${className}`;
+}
+
+function updateChannelSelectionCount() {
+    let selected = document.querySelectorAll('.channel-list-check:checked').length;
+    let total = document.querySelectorAll('.channel-list-check').length;
+    let count = document.getElementById('channelSelectionCount');
+    if (count) count.textContent = `${selected}/${total} selected`;
+    let importButton = document.getElementById('channelImportSelectedButton');
+    if (importButton) importButton.disabled = channelListState.busy || selected === 0;
+}
+
+function updateChannelControls() {
+    let hasItems = (channelListState.items || []).length > 0;
+    let controls = [
+        ['channelFetchButton', channelListState.busy],
+        ['channelNextButton', channelListState.busy || !channelListState.hasMore],
+        ['channelSelectAllButton', channelListState.busy || !hasItems],
+        ['channelClearSelectedButton', channelListState.busy || !hasItems],
+        ['channelImportSelectedButton', channelListState.busy || !hasItems]
+    ];
+    for (let [id, disabled] of controls) {
+        let button = document.getElementById(id);
+        if (button) button.disabled = disabled;
+    }
+
+    let label = document.getElementById('channelBatchLabel');
+    if (label) label.textContent = `Batch ${channelListState.batch || 0}`;
+    updateChannelSelectionCount();
+}
+
+function renderChannelListResults() {
+    let container = document.getElementById('channelListResults');
+    let items = channelListState.items || [];
+    if (!items.length) {
+        container.innerHTML = '<div class="empty-state">No selectable list rows in this batch.</div>';
+        updateChannelControls();
+        return;
+    }
+
+    container.innerHTML = items.map((item, index) => `
+        <label class="list-item">
+            <input type="checkbox" class="channel-list-check" data-index="${index}" onchange="updateChannelSelectionCount()" checked>
+            <span>
+                <span class="list-title">${escapeHtml(item.title || item.label || 'Untitled')}</span>
+                <span class="list-meta">${escapeHtml(item.kind || 'item')} | ${escapeHtml(item.label || '')}${item.bot ? ' | ' + escapeHtml(item.bot) : ''} | msg ${escapeHtml(item.message_id)}</span>
+                <span class="list-meta">${escapeHtml(item.snippet || '')}</span>
+            </span>
+        </label>
+    `).join('');
+    updateChannelControls();
+}
+
+function toggleListSelection(checked) {
+    for (let box of document.querySelectorAll('.channel-list-check')) {
+        box.checked = checked;
+    }
+    updateChannelSelectionCount();
+}
+
+function resolveChannelListTarget() {
+    let raw = String(document.getElementById('channelListSource').value || '').trim();
+    if (!raw) {
+        raw = String(document.getElementById('targetUsername')?.value || '').trim();
+    }
+
+    let rawMode = raw.toLowerCase();
+    if (!raw || ['all', '*', 'saved'].includes(rawMode)) {
+        return readTargetHistory()[0] || '';
+    }
+    if (rawMode === 'global') {
+        return '';
+    }
+
+    return normalizeTargetUsername(raw);
+}
+
+async function fetchChannelLists(reset = false) {
+    if (!channelListState.target) reset = true;
+
+    let target = resolveChannelListTarget();
+    let preferredBot = normalizeTargetUsername(document.getElementById('channelListBot').value || '@Filestore23bot');
+    let limit = Math.max(5, Math.min(80, Number(document.getElementById('channelListLimit').value || 30)));
+
+    if (!target) {
+        setChannelListStatus('Add a channel, or save one source first.', 'error');
+        return;
+    }
+
+    if (reset || channelListState.target.toLowerCase() !== target.toLowerCase()) {
+        channelListState.offsetId = 0;
+        channelListState.items = [];
+        channelListState.target = target;
+        channelListState.batch = 0;
+    }
+
+    setChannelListStatus(reset ? 'Fetching first batch...' : 'Fetching next batch...');
+    channelListState.busy = true;
+    updateChannelControls();
+    document.getElementById('channelListSource').value = target;
+    document.getElementById('channelListBot').value = preferredBot;
+    saveTargetUsernames([target]);
+
+    try {
+        let data = await apiAction('preview_channel_lists', {
+            username: target,
+            offset_id: channelListState.offsetId,
+            limit,
+            preferred_bot: preferredBot,
+            skip_keys: JSON.stringify(readImportedListKeys())
+        });
+
+        if (!data.success) {
+            setChannelListStatus(data.error || 'Batch fetch failed', 'error');
+            return;
+        }
+
+        channelListState.items = data.items || [];
+        channelListState.offsetId = Number(data.next_offset_id || 0);
+        channelListState.hasMore = !!data.has_more;
+        channelListState.batch += 1;
+        renderChannelListResults();
+        setChannelListStatus(`${channelListState.items.length} selectable row(s). ${channelListState.hasMore ? 'Next batch available.' : 'End of fetched history.'}`, channelListState.items.length ? 'success' : 'info');
+    } catch (error) {
+        setChannelListStatus(error.message || 'Batch fetch failed', 'error');
+    } finally {
+        channelListState.busy = false;
+        updateChannelControls();
+    }
+}
+
+function selectedChannelItems() {
+    let selected = [];
+    for (let box of document.querySelectorAll('.channel-list-check')) {
+        if (!box.checked) continue;
+        let item = channelListState.items[Number(box.dataset.index)];
+        if (item) selected.push(item);
+    }
+    return selected;
+}
+
+function updateChannelImportProgress() {
+    let total = channelImportRun.total || 0;
+    let done = channelImportRun.done || 0;
+    let files = channelImportRun.files || 0;
+    let message = total
+        ? `Selected batches: ${done}/${total} finished | Stored files: ${files}`
+        : 'No selected batch running.';
+    setChannelListStatus(message, done >= total && total ? 'success' : 'info');
+}
+
+function handleChannelImportEvent(data) {
+    appendLog(data);
+    if (!data || data.error) return;
+
+    if (data.status === 'source_import') {
+        updateChannelImportProgress();
+        setChannelListStatus(`${data.detail || 'Starting selected batch'} | ${channelImportRun.done}/${channelImportRun.total} finished`, 'info');
+    } else if (data.status === 'stored') {
+        channelImportRun.files = Math.max(channelImportRun.files, Number(data.stored_count || channelImportRun.files + 1));
+        updateChannelImportProgress();
+    } else if (data.status === 'source_complete') {
+        channelImportRun.done++;
+        updateChannelImportProgress();
+    } else if (data.status === 'complete') {
+        channelImportRun.files = Math.max(channelImportRun.files, Number(data.stored_count || channelImportRun.files));
+        channelImportRun.done = Math.min(channelImportRun.total, Math.max(channelImportRun.done, channelImportRun.total));
+        updateChannelImportProgress();
+    }
+}
+
+async function importSelectedLists() {
+    let selected = selectedChannelItems();
+    if (!selected.length) {
+        setChannelListStatus('Choose at least one row to import.', 'error');
+        return;
+    }
+
+    channelListState.busy = true;
+    channelImportRun = {total: selected.length, done: 0, files: 0};
+    updateChannelControls();
+    updateChannelImportProgress();
+    addLog(`Importing ${selected.length} selected channel row(s).`, 'info');
+    let controller = new AbortController();
+    scrapeController = controller;
+
+    try {
+        let body = new URLSearchParams();
+        body.set('items', JSON.stringify(selected));
+        body.set('preferred_bot', normalizeTargetUsername(document.getElementById('channelListBot').value || '@Filestore23bot'));
+
+        let res = await fetch('server.php?action=import_selected_lists', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+            signal: controller.signal
+        });
+
+        let reader = res.body.getReader();
+        let decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            let {done, value} = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, {stream: true});
+            let lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (let line of lines) {
+                if (!line.trim()) continue;
+                let data = JSON.parse(line);
+                handleChannelImportEvent(data);
+            }
+        }
+        if (buffer.trim()) handleChannelImportEvent(JSON.parse(buffer));
+
+        saveImportedListKeys(selected.map(item => item.key));
+        channelListState.items = channelListState.items.filter(item => !selected.some(row => row.key === item.key));
+        renderChannelListResults();
+        setChannelListStatus('Selected rows imported and hidden from future batches.', 'success');
+    } catch (error) {
+        setChannelListStatus(error.message || 'Import failed', 'error');
+    } finally {
+        scrapeController = null;
+        channelListState.busy = false;
+        updateChannelControls();
+    }
+}
+
+function setManageStatus(message, className = '') {
+    let status = document.getElementById('manageStatus');
+    status.textContent = message;
+    status.className = `manage-status ${className}`;
+}
+
+async function apiAction(action, body = null) {
+    let options = body ? {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams(body).toString()
+    } : {};
+    let res = await fetch(`server.php?action=${encodeURIComponent(action)}`, options);
+    return await res.json();
+}
+
+function setText(id, value) {
+    let el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function formatCount(value, fallback = '-') {
+    return Number.isFinite(Number(value)) ? Number(value).toLocaleString() : fallback;
+}
+
+function setIndexStatus(message, className = '') {
+    let status = document.getElementById('indexStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.className = `manage-status ${className}`;
+}
+
+function appendIndexLog(message, className = 'info') {
+    let log = document.getElementById('indexLogContent');
+    if (!log) return;
+    log.insertAdjacentHTML('beforeend', `<div class="log-item ${className}">${escapeHtml(message)}</div>`);
+    let panel = document.getElementById('indexProgressLog');
+    if (panel) panel.scrollTop = panel.scrollHeight;
+}
+
+function setMemberStatus(message, className = '') {
+    let status = document.getElementById('memberStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.className = `manage-status ${className}`;
+}
+
+function appendMemberLog(message, className = 'info') {
+    let log = document.getElementById('memberLogContent');
+    if (!log) return;
+    log.insertAdjacentHTML('beforeend', `<div class="log-item ${className}">${escapeHtml(message)}</div>`);
+}
+
+function memberTargetValue() {
+    return document.getElementById('memberTarget')?.value || document.getElementById('indexMainChannel')?.value || '';
+}
+
+async function refreshMemberGrowth() {
+    setMemberStatus('Checking member status...');
+    try {
+        let data = await apiAction('member_growth_status', {target: memberTargetValue()});
+        if (!data.success) {
+            setMemberStatus(data.error || 'Member status failed', 'error');
+            appendMemberLog(data.error || 'Member status failed', 'error');
+            return;
+        }
+
+        setText('memberTargetName', data.username || data.title || data.target || '-');
+        setText('memberCount', data.members === null ? '-' : formatCount(data.members));
+        setText('memberMode', document.getElementById('memberJoinRequest')?.checked ? 'Request' : 'Invite');
+        if (data.username && document.getElementById('memberTarget')) {
+            document.getElementById('memberTarget').value = data.username;
+        }
+        setMemberStatus(`Status refreshed via logged-in Telegram session.`, 'success');
+        appendMemberLog(`Status for ${data.title || data.target}: ${data.members === null ? 'unknown' : formatCount(data.members)} members.`, 'info');
+    } catch (error) {
+        setMemberStatus(error.message || 'Member status failed', 'error');
+    }
+}
+
+async function createMemberInvite() {
+    setMemberStatus('Creating invite link...');
+    try {
+        let data = await apiAction('create_member_invite', {
+            target: memberTargetValue(),
+            name: document.getElementById('memberInviteName')?.value || '',
+            member_limit: document.getElementById('memberLimit')?.value || '0',
+            expire_hours: document.getElementById('memberExpireHours')?.value || '0',
+            join_request: document.getElementById('memberJoinRequest')?.checked ? '1' : '0'
+        });
+        if (!data.success) {
+            setMemberStatus(data.error || 'Invite creation failed', 'error');
+            appendMemberLog(data.error || 'Invite creation failed', 'error');
+            return;
+        }
+
+        document.getElementById('memberInviteLink').value = data.invite_link || '';
+        setText('memberMode', data.creates_join_request ? 'Request' : 'Invite');
+        setMemberStatus('Invite link created by the logged-in Telegram account.', 'success');
+        appendMemberLog(`Created invite link for ${data.target} without using the movie bot.`, 'success');
+    } catch (error) {
+        setMemberStatus(error.message || 'Invite creation failed', 'error');
+    }
+}
+
+async function copyMemberInvite() {
+    let link = document.getElementById('memberInviteLink')?.value || '';
+    if (!link) {
+        setMemberStatus('Create an invite link first.', 'error');
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(link);
+        setMemberStatus('Invite copied.', 'success');
+    } catch (error) {
+        setMemberStatus('Invite ready. Copy it from the field.', 'info');
+    }
+}
+
+async function refreshStatusOverview() {
+    let note = document.getElementById('statusNote');
+    if (note) {
+        note.textContent = 'Refreshing status...';
+        note.className = 'manage-status';
+    }
+
+    try {
+        let data = await apiAction('status_overview');
+        if (!data.success) {
+            if (note) {
+                note.textContent = data.error || 'Status refresh failed';
+                note.className = 'manage-status error';
+            }
+            return;
+        }
+
+        setText('statusMovies', formatCount(data.movies));
+        setText('statusFiles', formatCount(data.files));
+        setText('statusSubscribers', data.index_subscribers === null ? '-' : formatCount(data.index_subscribers));
+        setText('statusFollowers', data.bot_followers === null ? 'N/A' : formatCount(data.bot_followers));
+        setText('statusBot', data.bot_username || '-');
+        setText('statusChannel', data.index_channel || data.index_channel_id || '-');
+        setText('statusCatalogEntries', formatCount(data.catalog_entries));
+        setText('statusIndexBatches', formatCount(data.index_batches));
+
+        let mainChannel = document.getElementById('indexMainChannel');
+        if (mainChannel && !mainChannel.value && data.index_channel && String(data.index_channel).startsWith('@')) {
+            mainChannel.value = data.index_channel;
+        }
+
+        if (note) {
+            note.textContent = data.bot_followers_note || 'Status refreshed.';
+            note.className = 'manage-status info';
+        }
+    } catch (error) {
+        if (note) {
+            note.textContent = error.message || 'Status refresh failed';
+            note.className = 'manage-status error';
+        }
+    }
+}
+
+async function refreshCatalogStatus() {
+    try {
+        let data = await apiAction('catalog_status');
+        if (data.success) {
+            setManageStatus(`Catalog: ${data.movies} movies, ${data.files} stored files`);
+        } else {
+            setManageStatus(data.error || 'Catalog status failed', 'error');
+        }
+    } catch (error) {
+        setManageStatus('Catalog status failed', 'error');
+    }
+}
+
+async function rebuildCatalog() {
+    setManageStatus('Scanning stored bot messages...');
+    let data = await apiAction('rebuild_catalog');
+    if (data.success) {
+        setManageStatus(`Catalog rebuilt: ${data.movies} movies, ${data.files} files (${data.imported} imported)`, 'success');
+    } else {
+        setManageStatus(data.error || 'Rebuild failed', 'error');
+    }
+}
+
+async function repairCatalog() {
+    setManageStatus('Repairing stored file references...');
+    let data = await apiAction('repair_catalog');
+    if (data.success) {
+        setManageStatus(`References repaired: ${data.repaired} fixed, ${data.failed} failed`, 'success');
+        refreshCatalogStatus();
+    } else {
+        setManageStatus(data.error || 'Repair failed', 'error');
+    }
+}
+
+async function clearIndexChannel() {
+    if (!confirm('Delete the current public index channel messages?')) return;
+    setManageStatus('Deleting index channel messages...');
+    setIndexStatus('Deleting index channel messages...');
+    let data = await apiAction('clear_index');
+    if (data.success) {
+        setManageStatus(`Index channel cleared: ${data.deleted} messages deleted`, 'success');
+        setIndexStatus(`Index channel cleared: ${data.deleted} messages deleted`, 'success');
+        appendIndexLog(`Cleared ${data.deleted} index message(s).`, 'success');
+    } else {
+        setManageStatus(data.error || 'Clear index failed', 'error');
+        setIndexStatus(data.error || 'Clear index failed', 'error');
+    }
+}
+
+function indexBatchSize() {
+    return Math.max(1, Math.min(30, Number(document.getElementById('indexBatchSize')?.value || 10)));
+}
+
+function updateIndexRun() {
+    setText('indexBatchesDone', `${indexRun.posted}/${indexRun.total}`);
+    setText('indexMoviesDone', formatCount(indexRun.movies, '0'));
+    setText('indexCurrentBatch', indexRun.current || 'Idle');
+}
+
+function renderIndexPreview(data) {
+    let container = document.getElementById('indexPreview');
+    let badge = document.getElementById('indexPreviewBadge');
+    if (badge) badge.textContent = `${data.posted_batches || 0}/${data.batches || 0} posted`;
+    if (!container) return;
+
+    let groups = data.groups || [];
+    if (!groups.length) {
+        container.innerHTML = '<div class="empty-state">No stored movies found in the catalog.</div>';
+        return;
+    }
+
+    container.innerHTML = groups.map(group => {
+        let label = group.letter === '#' ? 'Other' : group.letter;
+        let titles = (group.titles || []).map(title => escapeHtml(title)).join(', ');
+        let posted = group.posted ? ' - posted' : '';
+        let disabled = group.posted ? 'disabled' : '';
+        let checked = group.posted ? '' : 'checked';
+        return `
+            <label class="preview-batch ${group.posted ? 'posted' : ''}">
+                <input type="checkbox" class="index-batch-check" data-batch="${escapeHtml(group.global_batch)}" onchange="updateIndexSelectionCount()" ${checked} ${disabled}>
+                <span>
+                    <strong>${escapeHtml(label)} batch ${escapeHtml(group.batch)} - ${escapeHtml(group.count)} movies${posted}</strong>
+                    <span>${titles}</span>
+                </span>
+            </label>
+        `;
+    }).join('');
+    updateIndexSelectionCount();
+}
+
+function selectedIndexBatches() {
+    return [...document.querySelectorAll('.index-batch-check:checked')]
+        .map(box => Number(box.dataset.batch))
+        .filter(number => Number.isFinite(number) && number > 0);
+}
+
+function updateIndexSelectionCount() {
+    let selected = selectedIndexBatches().length;
+    let available = document.querySelectorAll('.index-batch-check:not(:disabled)').length;
+    let badge = document.getElementById('indexPreviewBadge');
+    if (badge) badge.textContent = `${selected}/${available} selected`;
+}
+
+function toggleIndexBatchSelection(checked) {
+    for (let box of document.querySelectorAll('.index-batch-check:not(:disabled)')) {
+        box.checked = checked;
+    }
+    updateIndexSelectionCount();
+}
+
+function selectIndexBatchesFromStart() {
+    let start = Math.max(1, Number(document.getElementById('indexStartBatch')?.value || 1));
+    for (let box of document.querySelectorAll('.index-batch-check:not(:disabled)')) {
+        box.checked = Number(box.dataset.batch) >= start;
+    }
+    updateIndexSelectionCount();
+}
+
+async function loadIndexPreview() {
+    setIndexStatus('Loading alphabet preview...');
+    try {
+        let data = await apiAction('index_preview', {batch_size: indexBatchSize()});
+        if (!data.success) {
+            setIndexStatus(data.error || 'Preview failed', 'error');
+            return;
+        }
+
+        renderIndexPreview(data);
+        indexRun.total = Number(data.batches || 0);
+        indexRun.posted = Number(data.posted_batches || 0);
+        indexRun.movies = Number(data.posted_movies || 0);
+        indexRun.current = data.posted_batches ? `Continue at ${data.next_batch || data.posted_batches + 1}` : 'Ready';
+        let startInput = document.getElementById('indexStartBatch');
+        if (startInput) startInput.value = String(Math.min(Number(data.next_batch || 1), Number(data.batches || 1)));
+        updateIndexRun();
+        setIndexStatus(`${data.posted_batches || 0}/${data.batches} posted. Choose batches, then Continue.`, data.batches ? 'success' : 'info');
+    } catch (error) {
+        setIndexStatus(error.message || 'Preview failed', 'error');
+    }
+}
+
+function handleIndexEvent(data) {
+    if (!data) return;
+    if (data.error) {
+        appendIndexLog(data.error, 'error');
+        setIndexStatus(data.error, 'error');
+        return;
+    }
+
+    if (data.status === 'index_resume') {
+        indexRun.posted = Number(data.posted_batches || 0);
+        indexRun.total = Number(data.total_batches || indexRun.total || 0);
+        indexRun.movies = Number(data.movies || 0);
+        indexRun.current = data.mode === 'fresh' ? 'Fresh start' : 'Resume';
+        updateIndexRun();
+        appendIndexLog(`${data.mode === 'fresh' ? 'Starting fresh' : 'Continuing'} from ${indexRun.posted}/${indexRun.total} completed batches.`, 'info');
+        setIndexStatus(`${indexRun.posted}/${indexRun.total} already complete.`, 'info');
+        return;
+    }
+
+    if (data.status === 'index_batch') {
+        indexRun.total = Number(data.total_batches || indexRun.total || 0);
+        indexRun.current = `${data.title || 'Batch'} (${data.batch}/${indexRun.total})`;
+        updateIndexRun();
+        appendIndexLog(`Posting ${indexRun.current} with ${data.movies || 0} movie(s).`, 'info');
+        setIndexStatus(`Posting batch ${data.batch} of ${indexRun.total}...`);
+        return;
+    }
+
+    if (data.status === 'rate_limited') {
+        let wait = Number(data.retry_after || 0);
+        indexRun.current = `Waiting ${wait}s`;
+        updateIndexRun();
+        appendIndexLog(`Telegram rate limit. Waiting ${wait} second(s), then retrying same batch.`, 'info');
+        setIndexStatus(`Rate limited. Waiting ${wait} second(s), then retrying.`, 'info');
+        return;
+    }
+
+    if (data.status === 'cooldown') {
+        let wait = Number(data.cooldown_seconds || 0);
+        indexRun.posted = Number(data.posted_batches || indexRun.posted);
+        indexRun.total = Number(data.total_batches || indexRun.total);
+        indexRun.current = `Resting ${wait}s`;
+        updateIndexRun();
+        appendIndexLog(`Cooling down for ${wait} second(s) to avoid Telegram limits.`, 'info');
+        setIndexStatus(`Cooling down for ${wait} second(s).`, 'info');
+        return;
+    }
+
+    if (data.status === 'index_posted') {
+        indexRun.posted = Number(data.posted_batches || indexRun.posted + 1);
+        indexRun.total = Number(data.total_batches || indexRun.total || 0);
+        indexRun.movies = Number(data.movies || indexRun.movies);
+        indexRun.current = data.title || 'Posted';
+        updateIndexRun();
+        appendIndexLog(`Finished ${indexRun.posted}/${indexRun.total} batches.`, 'success');
+        setIndexStatus(`Finished ${indexRun.posted}/${indexRun.total} batches.`, 'success');
+        return;
+    }
+
+    if (data.status === 'stopped') {
+        indexRun.posted = Number(data.posted_batches || indexRun.posted);
+        indexRun.total = Number(data.total_batches || indexRun.total);
+        indexRun.current = 'Paused';
+        updateIndexRun();
+        appendIndexLog('Index posting paused. Press Continue to resume.', 'info');
+        setIndexStatus('Paused. Press Continue to resume.', 'info');
+        return;
+    }
+
+    if (data.status === 'complete') {
+        indexRun.posted = Number(data.posted_batches || indexRun.posted);
+        indexRun.movies = Number(data.movies || indexRun.movies);
+        indexRun.current = 'Done';
+        updateIndexRun();
+        appendIndexLog(`Index complete: ${indexRun.posted} batch(es), ${indexRun.movies} movie(s).`, 'success');
+        setIndexStatus(`Index complete: ${indexRun.posted} batch(es), ${indexRun.movies} movie(s).`, 'success');
+    }
+}
+
+async function postIndexBatchesStream(mode = 'resume') {
+    if (indexController) return;
+    let selected = selectedIndexBatches();
+    if (!selected.length) {
+        setIndexStatus('Choose at least one index batch first.', 'error');
+        return;
+    }
+    if (mode === 'fresh' && indexRun.posted > 0 && !confirm('Start from the beginning? Use this only after clearing repeated index posts.')) {
+        return;
+    }
+
+    document.getElementById('indexLogContent').innerHTML = '';
+    indexRun = {total: indexRun.total || 0, posted: mode === 'fresh' ? 0 : indexRun.posted, movies: mode === 'fresh' ? 0 : indexRun.movies, current: mode === 'fresh' ? 'Fresh start' : 'Continuing'};
+    updateIndexRun();
+    setIndexStatus(mode === 'fresh' ? 'Starting from A...' : 'Continuing from checkpoint...');
+    document.getElementById('continueIndexButton').disabled = true;
+    document.getElementById('postIndexButton').disabled = true;
+    document.getElementById('pauseIndexButton').disabled = false;
+
+    indexController = new AbortController();
+    try {
+        let body = new URLSearchParams();
+        body.set('batch_size', String(indexBatchSize()));
+        body.set('main_channel', document.getElementById('indexMainChannel')?.value || '');
+        body.set('mode', mode);
+        body.set('selected_batches', JSON.stringify(selected));
+        body.set('cooldown_every', String(Math.max(0, Math.min(50, Number(document.getElementById('indexCooldownEvery')?.value || 8)))));
+        body.set('cooldown_seconds', String(Math.max(0, Math.min(600, Number(document.getElementById('indexCooldownSeconds')?.value || 45)))));
+
+        let res = await fetch('server.php?action=post_index_stream', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+            signal: indexController.signal
+        });
+
+        let reader = res.body.getReader();
+        let decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            let {done, value} = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, {stream: true});
+            let lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (let line of lines) {
+                if (!line.trim()) continue;
+                handleIndexEvent(JSON.parse(line));
+            }
+        }
+        if (buffer.trim()) handleIndexEvent(JSON.parse(buffer));
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            setIndexStatus(error.message || 'Index posting failed', 'error');
+            appendIndexLog(error.message || 'Index posting failed', 'error');
+        }
+    } finally {
+        indexController = null;
+        document.getElementById('continueIndexButton').disabled = false;
+        document.getElementById('postIndexButton').disabled = false;
+        document.getElementById('pauseIndexButton').disabled = true;
+        refreshStatusOverview();
+        loadIndexPreview();
+    }
+}
+
+async function pauseIndexPosting() {
+    await fetch('server.php?action=stop_scrape');
+    if (indexController) {
+        setIndexStatus('Pause requested. Current request or retry wait will finish/exit safely.', 'info');
+        appendIndexLog('Pause requested. Use Continue to resume from the checkpoint.', 'info');
+    }
+}
+
+async function postIndexBatches() {
+    openTool('index');
+    await postIndexBatchesStream('resume');
+}
+
+function startBotPolling() {
+    if (botPollTimer) return;
+    pollBotOnce();
+    botPollTimer = setInterval(pollBotOnce, 3000);
+}
+
+async function pollBotOnce() {
+    if (botPollBusy || (scrapeJob && scrapeJob.running)) return;
+    botPollBusy = true;
+    try {
+        await apiAction('poll_bot');
+    } catch (error) {
+        // Local polling is best-effort; the next interval will try again.
+    } finally {
+        botPollBusy = false;
+    }
+}
+
+function getMovieTitles() {
+    return document.getElementById('movieTitles').value
+        .split(/\r?\n/)
+        .map(title => title.trim())
+        .filter(Boolean);
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    }[char]));
+}
+
+function addLog(message, className = 'info') {
+    let channelVisible = !document.getElementById('channelTool')?.classList.contains('hidden');
+    let logDiv = document.getElementById(channelVisible ? 'channelLogContent' : 'logContent');
+    if (!logDiv) return;
+    logDiv.insertAdjacentHTML('beforeend', `<div class="log-item ${className}">${escapeHtml(message)}</div>`);
+    let progressLog = document.getElementById(channelVisible ? 'channelProgressLog' : 'progressLog');
+    if (progressLog) progressLog.scrollTop = progressLog.scrollHeight;
+}
+
+function appendLog(data) {
+    if (!data) return;
+
+    if (data.error) {
+        addLog(data.error, 'error');
+        return;
+    }
+
+    let title = data.title || 'Scraper';
+    let detail = data.detail ? ` (${data.detail})` : '';
+    let quality = data.quality && data.quality !== 'unknown' ? ` ${data.quality}` : '';
+
+    if (data.status === 'complete') return;
+
+    switch (data.status) {
+        case 'searching':
+            addLog(`${title}: searching${detail || '...'}`, 'info');
+            break;
+        case 'result_found':
+            addLog(`${title}: found result${detail}`, 'success');
+            break;
+        case 'opening':
+            addLog(`${title}: ${data.detail || 'opening file button'}`, 'info');
+            break;
+        case 'stored':
+            addLog(`${title}: stored${quality} in bot${detail}`, 'success');
+            break;
+        case 'already_available':
+            addLog(`${title}: already available${quality}${detail}`, 'info');
+            break;
+        case 'index_pending':
+            addLog(`${title}: saved for batch index post`, 'info');
+            break;
+        case 'found_no_file':
+            addLog(`${title}: found, but no new file was stored${detail}`, 'error');
+            break;
+        case 'not_found':
+            addLog(`${title}: not found${detail}`, 'error');
+            break;
+        case 'no_response':
+            addLog(`${title}: no final bot answer${detail}`, 'error');
+            break;
+        case 'source_import':
+            addLog(`${title}: importing${detail}`, 'info');
+            break;
+        case 'source_complete':
+            addLog(`${title}: import done (${data.stored_count || 0} stored)`, 'info');
+            break;
+        case 'title_complete':
+            addLog(`${title}: done (${data.stored_count || 0} stored now, ${data.stored_total || 0} saved)`, 'info');
+            break;
+        case 'stopped':
+            addLog('Scraping stopped.', 'info');
+            break;
+        default:
+            addLog(`${title}: ${data.status || 'updated'}`, 'info');
+    }
+}
+
+function updateOutcome(outcome, data) {
+    if (!data || data.error) {
+        outcome.fatal = true;
+        return;
+    }
+
+    if (['result_found', 'opening', 'stored', 'already_available', 'found_no_file', 'source_import'].includes(data.status)) {
+        outcome.found = true;
+    }
+    if (data.status === 'stored') {
+        outcome.storedCount++;
+    }
+    if (data.status === 'already_available') {
+        outcome.already = true;
+    }
+    if (data.status === 'stopped') {
+        outcome.cancelled = true;
+    }
+}
+
+function createTitleOutcome() {
+    return {
+        found: false,
+        storedCount: 0,
+        already: false,
+        cancelled: false,
+        fatal: false
+    };
+}
+
+function finishStreamedTitle(job, outcome, data) {
+    outcome.storedCount = Math.max(outcome.storedCount, Number(data.stored_count || 0));
+
+    job.index++;
+    job.stats.processed = job.index;
+    if (outcome.found) job.stats.found++;
+    if (outcome.storedCount) job.stats.stored += outcome.storedCount;
+    if (outcome.already) job.stats.available++;
+    updateProgress();
+}
+
+function updateProgress() {
+    let panel = document.getElementById('progressPanel');
+    let bar = document.getElementById('progressBar');
+    let text = document.getElementById('progressText');
+    let counts = document.getElementById('progressCounts');
+
+    if (!scrapeJob) {
+        panel.classList.add('hidden');
+        bar.style.width = '0%';
+        text.textContent = '0/0 titles';
+        counts.textContent = 'Found 0 | Stored 0 files | Already 0';
+        return;
+    }
+
+    let total = scrapeJob.titles.length;
+    let processed = scrapeJob.stats.processed;
+    let percent = total ? Math.round((processed / total) * 100) : 0;
+
+    panel.classList.remove('hidden');
+    bar.style.width = `${percent}%`;
+    text.textContent = `${processed}/${total} titles`;
+    counts.textContent = `Found ${scrapeJob.stats.found} | Stored ${scrapeJob.stats.stored} files | Already ${scrapeJob.stats.available}`;
+}
+
+function updateScrapeControls(state = 'idle') {
+    let startButton = document.getElementById('startButton');
+    let importButton = document.getElementById('importChannelButton');
+    let pauseButton = document.getElementById('pauseButton');
+    let stopButton = document.getElementById('stopButton');
+
+    startButton.disabled = false;
+    if (importButton) importButton.disabled = false;
+    startButton.textContent = 'Start Titles';
+    if (importButton) importButton.textContent = 'Import Channel Lists';
+
+    if (!scrapeJob || state === 'idle') {
+        pauseButton.classList.add('hidden');
+        stopButton.classList.add('hidden');
+        pauseButton.disabled = false;
+        pauseButton.textContent = 'Pause';
+        return;
+    }
+
+    pauseButton.classList.remove('hidden');
+    stopButton.classList.remove('hidden');
+    startButton.disabled = true;
+    if (importButton) importButton.disabled = true;
+
+    if (state === 'paused') {
+        pauseButton.disabled = false;
+        pauseButton.textContent = 'Play';
+    } else if (state === 'pausing') {
+        pauseButton.disabled = true;
+        pauseButton.textContent = 'Pausing...';
+    } else {
+        pauseButton.disabled = false;
+        pauseButton.textContent = 'Pause';
+    }
+}
+
+async function signalStopCurrentJob(showLog = true) {
+    if (scrapeJob) {
+        scrapeJob.stopped = true;
+        scrapeJob.running = false;
+        scrapeJob.paused = false;
+        scrapeJob.pauseRequested = false;
+    }
+
+    if (scrapeController) {
+        scrapeController.abort();
+        scrapeController = null;
+    }
+
+    try {
+        await fetch('server.php?action=stop_scrape');
+    } catch (error) {
+        // Best-effort signal for the PHP loop; aborting the stream already stopped the browser side.
+    }
+
+    if (showLog) {
+        addLog('Stopped now.', 'info');
+        updateScrapeControls('idle');
+    }
+}
+
+async function startChannelImport() {
+    setSourceMode('import');
+    await startScraping();
+}
+
+async function startScraping() {
+    let sourceValue = document.getElementById('targetUsername').value;
+    let titles = getMovieTitles();
+    let rawMode = sourceValue.trim().toLowerCase();
+    let effectiveMode = sourceMode;
+    let explicitTargets = parseTargetUsernames(sourceValue);
+
+    if (sourceMode === 'import') {
+        effectiveMode = 'import';
+    } else if (!sourceValue.trim() || rawMode === 'all' || rawMode === '*') {
+        effectiveMode = 'saved';
+    } else if (rawMode === 'global') {
+        effectiveMode = 'global';
+    } else if (explicitTargets.length) {
+        effectiveMode = 'manual';
+    }
+
+    if (effectiveMode !== 'import' && !titles.length) {
+        addLog('Add at least one movie title.', 'error');
+        return;
+    }
+
+    let targets = [];
+    if (effectiveMode === 'global') {
+        try {
+            let globalTargets = await globalSourcesForTitles(titles);
+            targets = mergeTargets(globalTargets, readTargetHistory());
+        } catch (error) {
+            addLog(error.message || 'Global lookup failed', 'error');
+            return;
+        }
+    } else if (effectiveMode === 'saved') {
+        targets = readTargetHistory();
+    } else if (effectiveMode === 'import') {
+        targets = explicitTargets.length ? explicitTargets : readTargetHistory();
+    } else {
+        targets = explicitTargets;
+    }
+
+    if (!targets.length) {
+        addLog(effectiveMode === 'global' ? 'Global lookup found no usable sources.' : 'Add at least one source first, or discover saved sources.', 'error');
+        return;
+    }
+
+    document.getElementById('targetUsername').value = effectiveMode === 'saved' ? 'all' : (effectiveMode === 'global' ? 'global' : targets.join('\n'));
+    sourceMode = effectiveMode;
+    updateSourceModeButtons();
+    saveTargetUsernames(targets);
+
+    if (scrapeJob && (scrapeJob.running || scrapeJob.paused || scrapeController)) {
+        await signalStopCurrentJob(false);
+    }
+
+    scrapeJob = {
+        id: ++scrapeJobId,
+        username: targets[0],
+        targets,
+        resetTargets: new Set(targets),
+        titles: effectiveMode === 'import' ? targets : titles,
+        sourceTitles: titles,
+        index: 0,
+        resetPending: true,
+        running: false,
+        paused: false,
+        pauseRequested: false,
+        stopped: false,
+        stats: {
+            processed: 0,
+            found: 0,
+            stored: 0,
+            available: 0
+        }
+    };
+
+    document.getElementById('logContent').innerHTML = '';
+    updateProgress();
+    if (effectiveMode === 'import') {
+        addLog(`Importing from ${targets.length} source(s). Titles are optional in this mode.`, 'info');
+        await runImportQueue(scrapeJob);
+    } else {
+        addLog(`Started fresh with ${titles.length} title(s) across ${targets.length} source(s).`, 'info');
+        await runScrapeQueue(scrapeJob);
+    }
+}
+
+function pauseOrResumeScraping() {
+    if (!scrapeJob) return;
+
+    if (scrapeJob.running) {
+        scrapeJob.pauseRequested = true;
+        updateScrapeControls('pausing');
+        addLog('Pause requested. Current title will finish first.', 'info');
+        return;
+    }
+
+    if (scrapeJob.paused) {
+        scrapeJob.paused = false;
+        scrapeJob.pauseRequested = false;
+        addLog('Resuming from the paused position.', 'info');
+        runScrapeQueue(scrapeJob);
+    }
+}
+
+async function runScrapeQueue(job) {
+    if (!job || job.id !== scrapeJobId || job.stopped) return;
+
+    job.running = true;
+    job.paused = false;
+    updateScrapeControls('running');
+
+    if ((job.targets || [job.username]).length <= 1) {
+        let outcome = await scrapeRemainingTitles(job);
+        if (job.id !== scrapeJobId || job.stopped || outcome.cancelled || outcome.paused) return;
+        if (outcome.fatal) {
+            job.running = false;
+            updateScrapeControls('idle');
+            return;
+        }
+    } else {
+        let outcome = await runMultiSourceQueue(job);
+        if (job.id !== scrapeJobId || job.stopped || outcome.cancelled || outcome.paused) return;
+        if (outcome.fatal) {
+            job.running = false;
+            updateScrapeControls('idle');
+            return;
+        }
+    }
+
+    job.running = false;
+    job.paused = false;
+    updateScrapeControls('idle');
+    addLog('All titles finished.', 'info');
+}
+
+async function runMultiSourceQueue(job) {
+    let batchOutcome = {
+        cancelled: false,
+        fatal: false,
+        paused: false
+    };
+    let targets = job.targets || [job.username];
+
+    while (job.index < job.titles.length) {
+        if (job.id !== scrapeJobId || job.stopped) return batchOutcome;
+
+        let title = job.titles[job.index];
+        let titleOutcome = createTitleOutcome();
+
+        for (let target of targets) {
+            if (job.id !== scrapeJobId || job.stopped) return batchOutcome;
+
+            addLog(`${title}: trying ${target}...`, 'info');
+            let resetBot = job.resetTargets && job.resetTargets.has(target);
+            if (resetBot) job.resetTargets.delete(target);
+
+            let outcome = await scrapeOneTitle(job, title, target, resetBot, false);
+            if (outcome.cancelled || outcome.fatal) {
+                batchOutcome.cancelled = outcome.cancelled;
+                batchOutcome.fatal = outcome.fatal;
+                return batchOutcome;
+            }
+
+            titleOutcome.found = titleOutcome.found || outcome.found;
+            titleOutcome.already = titleOutcome.already || outcome.already;
+            titleOutcome.storedCount += outcome.storedCount;
+
+            if (outcome.storedCount > 0 || outcome.already) {
+                break;
+            }
+        }
+
+        job.index++;
+        job.stats.processed = job.index;
+        if (titleOutcome.found) job.stats.found++;
+        if (titleOutcome.storedCount) job.stats.stored += titleOutcome.storedCount;
+        if (titleOutcome.already) job.stats.available++;
+        updateProgress();
+        addLog(`${title}: done (${titleOutcome.storedCount || 0} stored now)`, 'info');
+
+        if (job.pauseRequested && job.index < job.titles.length) {
+            job.running = false;
+            job.paused = true;
+            job.pauseRequested = false;
+            batchOutcome.paused = true;
+            addLog('Paused after current title.', 'info');
+            updateScrapeControls('paused');
+            return batchOutcome;
+        }
+        job.pauseRequested = false;
+    }
+
+    return batchOutcome;
+}
+
+async function runImportQueue(job) {
+    if (!job || job.id !== scrapeJobId || job.stopped) return;
+
+    job.running = true;
+    job.paused = false;
+    updateScrapeControls('running');
+
+    let outcome = await importSources(job);
+    if (job.id !== scrapeJobId || job.stopped || outcome.cancelled) return;
+
+    job.running = false;
+    job.paused = false;
+    updateScrapeControls(outcome.fatal ? 'idle' : 'idle');
+    if (!outcome.fatal) addLog('Import finished.', 'info');
+}
+
+async function importSources(job) {
+    let outcome = {
+        cancelled: false,
+        fatal: false
+    };
+    let controller = new AbortController();
+    scrapeController = controller;
+
+    let body = new URLSearchParams();
+    body.set('username', (job.targets || []).join('\n'));
+    body.set('limit', String(Math.max(10, Math.min(500, Number(document.getElementById('importLimit')?.value || 120)))));
+    body.set('preferred_bot', normalizeTargetUsername(document.getElementById('preferredBot')?.value || '@Filestore23bot'));
+
+    try {
+        let res = await fetch('server.php?action=import_channel', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+            signal: controller.signal
+        });
+
+        if (!res.body) {
+            let data = await res.json();
+            appendLog(data);
+            outcome.fatal = !!data.error;
+            return outcome;
+        }
+
+        let reader = res.body.getReader();
+        let decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            let {done, value} = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, {stream: true});
+            let lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (let line of lines) {
+                if (!line.trim()) continue;
+
+                let data;
+                try {
+                    data = JSON.parse(line);
+                } catch (error) {
+                    addLog(`Bad server response: ${line}`, 'error');
+                    outcome.fatal = true;
+                    return outcome;
+                }
+
+                appendLog(data);
+                if (data.error) {
+                    outcome.fatal = true;
+                    return outcome;
+                }
+                if (data.status === 'source_complete') {
+                    job.index++;
+                    job.stats.processed = job.index;
+                    job.stats.stored += Number(data.stored_count || 0);
+                    if (Number(data.stored_count || 0) > 0) job.stats.found++;
+                    updateProgress();
+                }
+                if (data.status === 'stopped') {
+                    outcome.cancelled = true;
+                    return outcome;
+                }
+            }
+        }
+
+        if (buffer.trim()) {
+            let data = JSON.parse(buffer);
+            appendLog(data);
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            outcome.cancelled = true;
+        } else {
+            appendLog({error: error.message || 'Import failed'});
+            outcome.fatal = true;
+        }
+    } finally {
+        if (scrapeController === controller) {
+            scrapeController = null;
+        }
+    }
+
+    return outcome;
+}
+
+async function scrapeRemainingTitles(job) {
+    let batchOutcome = {
+        cancelled: false,
+        fatal: false,
+        paused: false
+    };
+    let titleOutcome = createTitleOutcome();
+    let controller = new AbortController();
+    scrapeController = controller;
+
+    let body = new URLSearchParams();
+    body.set('username', (job.targets && job.targets[0]) || job.username);
+    body.set('titles', job.titles.slice(job.index).join('\n'));
+    if (job.resetPending) {
+        body.set('reset_bot', '1');
+        job.resetPending = false;
+    }
+
+    async function pauseAfterCurrentTitle() {
+        job.running = false;
+        job.paused = true;
+        job.pauseRequested = false;
+        batchOutcome.paused = true;
+        addLog('Paused after current title.', 'info');
+        updateScrapeControls('paused');
+        try {
+            await fetch('server.php?action=stop_scrape');
+        } catch (error) {
+            // The stream will be aborted below; the server stop flag is best-effort.
+        }
+        controller.abort();
+    }
+
+    try {
+        let res = await fetch('server.php?action=scrape', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+            signal: controller.signal
+        });
+
+        if (!res.body) {
+            let data = await res.json();
+            appendLog(data);
+            updateOutcome(titleOutcome, data);
+            return {...batchOutcome, fatal: titleOutcome.fatal};
+        }
+
+        let reader = res.body.getReader();
+        let decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            let {done, value} = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, {stream: true});
+            let lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (let line of lines) {
+                if (!line.trim()) continue;
+
+                let data;
+                try {
+                    data = JSON.parse(line);
+                } catch (error) {
+                    addLog(`Bad server response: ${line}`, 'error');
+                    batchOutcome.fatal = true;
+                    return batchOutcome;
+                }
+
+                if (data.status === 'searching') {
+                    titleOutcome = createTitleOutcome();
+                }
+
+                appendLog(data);
+                updateOutcome(titleOutcome, data);
+
+                if (data.status === 'title_complete') {
+                    finishStreamedTitle(job, titleOutcome, data);
+                    titleOutcome = createTitleOutcome();
+
+                    if (job.pauseRequested && job.index < job.titles.length) {
+                        await pauseAfterCurrentTitle();
+                        return batchOutcome;
+                    }
+                    job.pauseRequested = false;
+                }
+
+                if (titleOutcome.fatal || titleOutcome.cancelled) {
+                    batchOutcome.fatal = titleOutcome.fatal;
+                    batchOutcome.cancelled = titleOutcome.cancelled;
+                    return batchOutcome;
+                }
+            }
+        }
+
+        if (buffer.trim()) {
+            let data = JSON.parse(buffer);
+            appendLog(data);
+            updateOutcome(titleOutcome, data);
+            if (data.status === 'title_complete') {
+                finishStreamedTitle(job, titleOutcome, data);
+            }
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            batchOutcome.cancelled = !batchOutcome.paused;
+        } else {
+            appendLog({error: error.message || 'Scraping failed'});
+            batchOutcome.fatal = true;
+        }
+    } finally {
+        if (scrapeController === controller) {
+            scrapeController = null;
+        }
+    }
+
+    return batchOutcome;
+}
+
+async function scrapeOneTitle(job, title, username = job.username, resetBot = job.resetPending, showTitleComplete = true) {
+    let outcome = {
+        found: false,
+        storedCount: 0,
+        already: false,
+        cancelled: false,
+        fatal: false
+    };
+    let controller = new AbortController();
+    scrapeController = controller;
+
+    let body = new URLSearchParams();
+    body.set('username', username);
+    body.set('titles', title);
+    if (resetBot) {
+        body.set('reset_bot', '1');
+    }
+    if (username === job.username) job.resetPending = false;
+
+    try {
+        let res = await fetch('server.php?action=scrape', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+            signal: controller.signal
+        });
+
+        if (!res.body) {
+            let data = await res.json();
+            appendLog(data);
+            updateOutcome(outcome, data);
+            return outcome;
+        }
+
+        let reader = res.body.getReader();
+        let decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            let {done, value} = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, {stream: true});
+            let lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (let line of lines) {
+                if (!line.trim()) continue;
+
+                let data;
+                try {
+                    data = JSON.parse(line);
+                } catch (error) {
+                    addLog(`Bad server response: ${line}`, 'error');
+                    outcome.fatal = true;
+                    continue;
+                }
+
+                if (showTitleComplete || data.status !== 'title_complete') {
+                    appendLog(data);
+                }
+                updateOutcome(outcome, data);
+                if (outcome.fatal || outcome.cancelled) return outcome;
+            }
+        }
+
+        if (buffer.trim()) {
+            let data = JSON.parse(buffer);
+            if (showTitleComplete || data.status !== 'title_complete') {
+                appendLog(data);
+            }
+            updateOutcome(outcome, data);
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            outcome.cancelled = true;
+        } else {
+            appendLog({error: error.message || 'Scraping failed'});
+            outcome.fatal = true;
+        }
+    } finally {
+        if (scrapeController === controller) {
+            scrapeController = null;
+        }
+    }
+
+    return outcome;
+}
+
+async function stopScraping() {
+    await signalStopCurrentJob(true);
+}
+
+async function logout() {
+    await stopScraping();
+    if (botPollTimer) {
+        clearInterval(botPollTimer);
+        botPollTimer = null;
+    }
+    await fetch('server.php?action=logout');
+    localStorage.removeItem(rememberKey);
+    location.reload();
+}
+</script>
+</body>
+</html>
