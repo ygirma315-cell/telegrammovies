@@ -216,7 +216,8 @@ try {
             importChannelSources(
                 postValue('username'),
                 (int) ($_POST['limit'] ?? CHANNEL_IMPORT_HISTORY_LIMIT),
-                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? CHANNEL_IMPORT_PREFERRED_BOT))
+                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? CHANNEL_IMPORT_PREFERRED_BOT)),
+                ($_POST['direct_only'] ?? '') === '1'
             );
             break;
         case 'preview_channel_lists':
@@ -2071,7 +2072,7 @@ function observeBotImport(
     return ['stored' => $storedCount, 'clicked' => $clicks];
 }
 
-function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_IMPORT_HISTORY_LIMIT, string $preferredBot = CHANNEL_IMPORT_PREFERRED_BOT): void {
+function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_IMPORT_HISTORY_LIMIT, string $preferredBot = CHANNEL_IMPORT_PREFERRED_BOT, bool $directOnly = false): void {
     global $BOT_USERNAME;
 
     $madeline = getMadeline();
@@ -2101,7 +2102,8 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
     set_time_limit(0);
     ignore_user_abort(false);
 
-    $historyLimit = max(10, min(250, $historyLimit));
+    $historyLimit = max(10, min(500, $historyLimit));
+    $maxFilesPerSource = $directOnly ? $historyLimit : CHANNEL_IMPORT_MAX_FILES_PER_SOURCE;
     $stopped = false;
 
     foreach ($targets as $target) {
@@ -2115,7 +2117,7 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
         streamJsonLine([
             'status' => 'source_import',
             'title' => $sourceName,
-            'detail' => 'scanning recent posts and bot buttons',
+            'detail' => $directOnly ? 'scanning direct files only' : 'scanning recent posts and bot buttons',
         ]);
 
         try {
@@ -2124,10 +2126,19 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
             $peer = $madeline->getInfo($targetForInfo, API::INFO_TYPE_PEER);
             $isBot = ($peerInfo['type'] ?? '') === API::PEER_TYPE_BOT || !empty($peerInfo['User']['bot']);
 
+            if ($directOnly && $isBot) {
+                streamJsonLine([
+                    'status' => 'found_no_file',
+                    'title' => $sourceName,
+                    'detail' => 'Direct file mode expects a channel or group, not a bot.',
+                ]);
+                continue;
+            }
+
             if ($isBot) {
                 $botBaseline = latestBotMessageId($madeline, $targetForInfo);
                 $madeline->messages->sendMessage(['peer' => $peer, 'message' => '/start']);
-                $botImport = observeBotImport($madeline, $targetForInfo, $sourceName, $BOT_USERNAME, CHANNEL_IMPORT_MAX_FILES_PER_SOURCE, $sourceName, $preferredBot, $botBaseline);
+                $botImport = observeBotImport($madeline, $targetForInfo, $sourceName, $BOT_USERNAME, $maxFilesPerSource, $sourceName, $preferredBot, $botBaseline);
                 $sourceStored += (int) ($botImport['stored'] ?? 0);
             } else {
                 $history = ['messages' => peerHistoryOldestFirst($madeline, $peer, $historyLimit)];
@@ -2148,6 +2159,13 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
                             $sourceStored++;
                         }
                         streamStoredImport($stored, $stored['title'] ?? $fallbackTitle, $sourceName, $sourceStored);
+                    }
+
+                    if ($directOnly) {
+                        if ($sourceStored >= $maxFilesPerSource) {
+                            break;
+                        }
+                        continue;
                     }
 
                     foreach (($message['reply_markup']['rows'] ?? []) as $row) {
@@ -2192,14 +2210,14 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
                                 ]);
                                 openTelegramStartUrl($madeline, $peer, 'https://t.me/' . $start['domain'] . '?start=' . rawurlencode($start['payload']));
                                 usleep(500000);
-                                $remaining = max(0, CHANNEL_IMPORT_MAX_FILES_PER_SOURCE - $sourceStored);
+                                $remaining = max(0, $maxFilesPerSource - $sourceStored);
                                 if ($remaining > 0) {
                                     $botImport = observeBotImport($madeline, $start['domain'], $buttonTitle, $BOT_USERNAME, $remaining, $sourceName, $preferredBot, $botBaseline);
                                     $sourceStored += (int) ($botImport['stored'] ?? 0);
                                 }
                             }
 
-                            if ($sourceStored >= CHANNEL_IMPORT_MAX_FILES_PER_SOURCE) {
+                            if ($sourceStored >= $maxFilesPerSource) {
                                 break 3;
                             }
                         }
