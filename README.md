@@ -35,6 +35,7 @@ ADMIN_PASSWORD
 TELEGRAM_WEBHOOK_PATH
 AUTO_SET_WEBHOOK
 BOT_MAX_FILES_PER_REQUEST
+MAIN_CHANNEL_USERNAME
 ```
 
 Do not commit `.env`, `sessions/`, `vendor/`, `composer.phar`, or log files.

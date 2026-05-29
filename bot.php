@@ -87,6 +87,24 @@ function botApi(string $method, array $params = [], int $timeout = 25): array {
     return is_array($data) ? $data : ['ok' => false, 'description' => 'Bot API request failed'];
 }
 
+function botMainChannelUsername(): string {
+    $channel = botEnv('MAIN_CHANNEL_USERNAME', '@movieshddddd2');
+    if ($channel === '') {
+        return '';
+    }
+
+    return '@' . ltrim($channel, '@');
+}
+
+function botWithMainChannel(string $text): string {
+    $channel = botMainChannelUsername();
+    if ($channel === '') {
+        return $text;
+    }
+
+    return rtrim($text) . "\n\nMain channel: " . $channel;
+}
+
 function botReadCatalog(): array {
     $sessionCatalog = botPath(botEnv('APP_SESSION_DIR', 'sessions') . '/stored_movies.json');
     $seedCatalog = botPath(botEnv('CATALOG_SEED_FILE', 'data/stored_movies.json'));
@@ -165,7 +183,7 @@ function botSendSearchResults(string|int $chatId, string $query): void {
     if (!$matches) {
         botApi('sendMessage', [
             'chat_id' => $chatId,
-            'text' => "No movies found for: $query",
+            'text' => botWithMainChannel("No movies found for: $query"),
         ]);
         return;
     }
@@ -180,7 +198,7 @@ function botSendSearchResults(string|int $chatId, string $query): void {
 
     botApi('sendMessage', [
         'chat_id' => $chatId,
-        'text' => 'Found ' . count($matches) . " result(s) for: $query",
+        'text' => botWithMainChannel('Found ' . count($matches) . " result(s) for: $query"),
         'reply_markup' => ['inline_keyboard' => $keyboard],
     ]);
 }
@@ -190,7 +208,7 @@ function botDeliverMovieToChat(string|int $chatId, string $movieId): void {
     if (!$row) {
         botApi('sendMessage', [
             'chat_id' => $chatId,
-            'text' => 'Movie is not available anymore.',
+            'text' => botWithMainChannel('Movie is not available anymore.'),
         ]);
         return;
     }
@@ -207,7 +225,7 @@ function botDeliverMovieToChat(string|int $chatId, string $movieId): void {
             $result = botApi('sendDocument', [
                 'chat_id' => $chatId,
                 'document' => $item['bot_file_id'],
-                'caption' => "$title ($quality)",
+                'caption' => botWithMainChannel("$title ($quality)"),
             ], 60);
             if (!empty($result['ok'])) {
                 $sent++;
@@ -220,7 +238,7 @@ function botDeliverMovieToChat(string|int $chatId, string $movieId): void {
                 'chat_id' => $chatId,
                 'from_chat_id' => $item['source_chat_id'],
                 'message_id' => $item['bot_message_id'],
-                'caption' => "$title ($quality)",
+                'caption' => botWithMainChannel("$title ($quality)"),
             ], 60);
             if (!empty($result['ok'])) {
                 $sent++;
@@ -231,7 +249,7 @@ function botDeliverMovieToChat(string|int $chatId, string $movieId): void {
         if (!empty($item['source_url'])) {
             botApi('sendMessage', [
                 'chat_id' => $chatId,
-                'text' => "$title ($quality): " . $item['source_url'],
+                'text' => botWithMainChannel("$title ($quality): " . $item['source_url']),
             ]);
             $sent++;
         }
@@ -240,7 +258,7 @@ function botDeliverMovieToChat(string|int $chatId, string $movieId): void {
     if ($sent === 0) {
         botApi('sendMessage', [
             'chat_id' => $chatId,
-            'text' => "$title is listed, but no copyable file reference was saved. Rebuild the catalog locally and redeploy.",
+            'text' => botWithMainChannel("$title is listed, but no copyable file reference was saved. Rebuild the catalog locally and redeploy."),
         ]);
     }
 }
@@ -275,7 +293,7 @@ function botHandleWebhook(array $update): array {
         } else {
             botApi('sendMessage', [
                 'chat_id' => $chatId,
-                'text' => 'Send a movie name, or use /search movie name',
+                'text' => botWithMainChannel('Send any movie name to search, or use /search movie name.'),
             ]);
         }
 
@@ -287,7 +305,7 @@ function botHandleWebhook(array $update): array {
         if ($query === '') {
             botApi('sendMessage', [
                 'chat_id' => $chatId,
-                'text' => 'Use: /search movie name',
+                'text' => botWithMainChannel('Send any movie name to search. You can also use /search movie name.'),
             ]);
         } else {
             botSendSearchResults($chatId, $query);

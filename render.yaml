@@ -23,3 +23,5 @@ services:
         value: "true"
       - key: BOT_MAX_FILES_PER_REQUEST
         value: "3"
+      - key: MAIN_CHANNEL_USERNAME
+        value: "@movieshddddd2"
