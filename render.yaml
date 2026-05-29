@@ -17,3 +17,11 @@ services:
         value: "-1003522601621"
       - key: APP_SESSION_DIR
         value: /tmp/telegrammovies-sessions
+      - key: CATALOG_SEED_FILE
+        value: data/stored_movies.json
+      - key: PUBLIC_BOT_ONLY
+        value: "true"
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false

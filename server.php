@@ -3,6 +3,39 @@
 // Uses MadelineProto 8+ high-level methods
 
 // ---------- CONFIG ----------
+function loadDotEnv(string $file): void {
+    if (!is_file($file) || !is_readable($file)) {
+        return;
+    }
+
+    foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) {
+            continue;
+        }
+
+        [$key, $value] = explode('=', $line, 2);
+        $key = ltrim(trim($key), "\xEF\xBB\xBF");
+        if ($key === '' || getenv($key) !== false) {
+            continue;
+        }
+
+        $value = trim($value);
+        if (
+            strlen($value) >= 2
+            && (($value[0] === '"' && $value[-1] === '"') || ($value[0] === "'" && $value[-1] === "'"))
+        ) {
+            $value = substr($value, 1, -1);
+        }
+
+        putenv($key . '=' . $value);
+        $_ENV[$key] = $value;
+        $_SERVER[$key] = $value;
+    }
+}
+
+loadDotEnv(__DIR__ . '/.env');
+
 function envString(string $key, ?string $default = null): string {
     $value = getenv($key);
     if ($value === false || trim((string) $value) === '') {
@@ -38,6 +71,7 @@ $BOT_TOKEN = envString('TELEGRAM_BOT_TOKEN', '');
 $BOT_USERNAME = envString('TELEGRAM_BOT_USERNAME', 'moviesstorehdbot');
 $INDEX_CHANNEL_ID = envInt('TELEGRAM_INDEX_CHANNEL_ID', -1003522601621);
 $SESSION_DIR = appPath(envString('APP_SESSION_DIR', 'sessions'));
+$CATALOG_SEED_FILE = appPath(envString('CATALOG_SEED_FILE', 'data/stored_movies.json'));
 $SESSION_FILE = $SESSION_DIR . '/telegram_session.madeline';
 $STOP_FILE = $SESSION_DIR . '/stop_scrape.flag';
 $CATALOG_FILE = $SESSION_DIR . '/stored_movies.json';
@@ -362,10 +396,15 @@ function catalogKey(string $title): string {
 }
 
 function readCatalog(): array {
-    global $CATALOG_FILE;
+    global $CATALOG_FILE, $CATALOG_SEED_FILE;
 
     if (!is_file($CATALOG_FILE)) {
-        return [];
+        if (!is_file($CATALOG_SEED_FILE)) {
+            return [];
+        }
+
+        $data = json_decode((string) file_get_contents($CATALOG_SEED_FILE), true);
+        return is_array($data) ? $data : [];
     }
 
     $data = json_decode((string) file_get_contents($CATALOG_FILE), true);

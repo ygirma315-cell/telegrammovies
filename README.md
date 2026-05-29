@@ -21,6 +21,7 @@ php -S 127.0.0.1:8000
 ## Render setup
 
 Use a Docker Web Service on Render. The app listens on Render's `PORT` environment variable.
+Render is configured for bot-only public mode, so the dashboard is not served publicly.
 
 Set these environment variables in Render:
 
@@ -31,6 +32,22 @@ TELEGRAM_BOT_TOKEN
 TELEGRAM_BOT_USERNAME
 TELEGRAM_INDEX_CHANNEL_ID
 APP_SESSION_DIR
+CATALOG_SEED_FILE
+PUBLIC_BOT_ONLY
+ADMIN_PASSWORD
+TELEGRAM_WEBHOOK_SECRET
 ```
 
 Do not commit `.env`, `sessions/`, `vendor/`, `composer.phar`, or log files.
+
+Use `/telegram/webhook` as the Telegram webhook path, for example:
+
+```text
+https://your-render-service.onrender.com/telegram/webhook
+```
+
+After Render deploys, set the bot webhook from your local machine:
+
+```sh
+php scripts/set_webhook.php https://your-render-service.onrender.com/telegram/webhook
+```

@@ -32,4 +32,4 @@ COPY . .
 ENV APP_SESSION_DIR=/tmp/telegrammovies-sessions
 EXPOSE 10000
 
-CMD ["sh", "-c", "mkdir -p \"$APP_SESSION_DIR\" && php -S 0.0.0.0:${PORT:-10000} -t /app"]
+CMD ["sh", "-c", "mkdir -p \"$APP_SESSION_DIR\" && php -S 0.0.0.0:${PORT:-10000} -t /app /app/router.php"]
