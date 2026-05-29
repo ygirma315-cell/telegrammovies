@@ -25,3 +25,9 @@ services:
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
+      - key: TELEGRAM_WEBHOOK_PATH
+        value: /telegram/webhook
+      - key: AUTO_SET_WEBHOOK
+        value: "true"
+      - key: BOT_MAX_FILES_PER_REQUEST
+        value: "3"

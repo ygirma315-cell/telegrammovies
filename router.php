@@ -80,9 +80,7 @@ if (($path === '/telegram/webhook' || $path === '/webhook' || $path === '/bot-we
         return true;
     }
 
-    $_GET['action'] = 'bot_webhook';
-    $_REQUEST['action'] = 'bot_webhook';
-    require __DIR__ . '/server.php';
+    require __DIR__ . '/bot.php';
     return true;
 }
 
@@ -90,6 +88,11 @@ if ($path === '/server.php') {
     $action = (string) ($_REQUEST['action'] ?? '');
     if ($publicBotOnly && !in_array($action, ['bot_webhook'], true)) {
         routerJson(['ok' => false, 'error' => 'Not found'], 404);
+        return true;
+    }
+
+    if ($publicBotOnly && $action === 'bot_webhook') {
+        require __DIR__ . '/bot.php';
         return true;
     }
 

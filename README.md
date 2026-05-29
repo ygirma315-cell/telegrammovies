@@ -36,6 +36,9 @@ CATALOG_SEED_FILE
 PUBLIC_BOT_ONLY
 ADMIN_PASSWORD
 TELEGRAM_WEBHOOK_SECRET
+TELEGRAM_WEBHOOK_PATH
+AUTO_SET_WEBHOOK
+BOT_MAX_FILES_PER_REQUEST
 ```
 
 Do not commit `.env`, `sessions/`, `vendor/`, `composer.phar`, or log files.
@@ -51,3 +54,5 @@ After Render deploys, set the bot webhook from your local machine:
 ```sh
 php scripts/set_webhook.php https://your-render-service.onrender.com/telegram/webhook
 ```
+
+On Render, `AUTO_SET_WEBHOOK=true` uses Render's `RENDER_EXTERNAL_URL` and sets this webhook automatically during startup.

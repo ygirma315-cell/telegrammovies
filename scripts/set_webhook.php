@@ -26,7 +26,13 @@ loadEnvFile(__DIR__ . '/../.env');
 
 $token = (string) (getenv('TELEGRAM_BOT_TOKEN') ?: '');
 $url = (string) ($argv[1] ?? getenv('WEBHOOK_URL') ?: '');
+$renderUrl = rtrim((string) (getenv('RENDER_EXTERNAL_URL') ?: ''), '/');
+$webhookPath = '/' . ltrim((string) (getenv('TELEGRAM_WEBHOOK_PATH') ?: '/telegram/webhook'), '/');
 $secret = (string) (getenv('TELEGRAM_WEBHOOK_SECRET') ?: '');
+
+if ($url === '' && $renderUrl !== '') {
+    $url = $renderUrl . $webhookPath;
+}
 
 if ($token === '') {
     fwrite(STDERR, "Missing TELEGRAM_BOT_TOKEN.\n");
@@ -35,6 +41,7 @@ if ($token === '') {
 
 if ($url === '') {
     fwrite(STDERR, "Usage: php scripts/set_webhook.php https://your-render-service.onrender.com/telegram/webhook\n");
+    fwrite(STDERR, "Or set RENDER_EXTERNAL_URL/WEBHOOK_URL and TELEGRAM_WEBHOOK_PATH.\n");
     exit(1);
 }
 
