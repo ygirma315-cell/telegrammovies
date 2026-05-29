@@ -457,10 +457,11 @@
             <input type="number" id="importLimit" min="10" max="500" value="120" title="Channel scan limit">
             <label class="field-label" for="preferredBot">Preferred bot</label>
             <input type="text" id="preferredBot" value="@Filestore23bot" placeholder="Preferred bot">
-            <label class="field-label">
-                <input type="checkbox" id="directOnlyImport" checked>
-                Direct channel files only
-            </label>
+            <label class="field-label" for="importMode">Import mode</label>
+            <select id="importMode" title="Import mode">
+                <option value="direct" selected>Direct channel files</option>
+                <option value="smart">Smart import (buttons and bots)</option>
+            </select>
         </div>
         <div class="button-row">
             <button id="startButton" onclick="startScraping()">Start Titles</button>
@@ -2003,7 +2004,7 @@ async function importSources(job) {
     body.set('username', (job.targets || []).join('\n'));
     body.set('limit', String(Math.max(10, Math.min(500, Number(document.getElementById('importLimit')?.value || 120)))));
     body.set('preferred_bot', normalizeTargetUsername(document.getElementById('preferredBot')?.value || '@Filestore23bot'));
-    body.set('direct_only', document.getElementById('directOnlyImport')?.checked ? '1' : '0');
+    body.set('direct_only', document.getElementById('importMode')?.value === 'direct' ? '1' : '0');
 
     try {
         let res = await fetch('server.php?action=import_channel', {
