@@ -72,4 +72,27 @@ if (!is_array($data)) {
 }
 
 echo json_encode($data, JSON_PRETTY_PRINT) . PHP_EOL;
-exit(!empty($data['ok']) ? 0 : 1);
+if (empty($data['ok'])) {
+    exit(1);
+}
+
+$commands = [
+    ['command' => 'start', 'description' => 'Start the bot'],
+    ['command' => 'search', 'description' => 'Search for a movie'],
+    ['command' => 'movie', 'description' => 'Search for a movie'],
+];
+
+$commandContext = stream_context_create([
+    'http' => [
+        'method' => 'POST',
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
+        'content' => http_build_query(['commands' => json_encode($commands)]),
+        'ignore_errors' => true,
+        'timeout' => 20,
+    ],
+]);
+
+$commandResponse = file_get_contents('https://api.telegram.org/bot' . $token . '/setMyCommands', false, $commandContext);
+$commandData = json_decode((string) $commandResponse, true);
+echo json_encode($commandData, JSON_PRETTY_PRINT) . PHP_EOL;
+exit(!empty($commandData['ok']) ? 0 : 1);

@@ -64,7 +64,7 @@ routerLoadDotEnv(__DIR__ . '/.env');
 
 $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/';
 $method = (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET');
-$publicBotOnly = routerBool('PUBLIC_BOT_ONLY', false);
+$publicBotOnly = routerBool('PUBLIC_BOT_ONLY', true);
 $adminPassword = (string) (getenv('ADMIN_PASSWORD') ?: '');
 
 if ($path === '/health' || ($publicBotOnly && $path === '/')) {
