@@ -80,6 +80,8 @@ https://ygirma315-cell.github.io/telegrammovies/
 
 The site pings Render while it is open. The stronger keepalive is `.github/workflows/keepalive.yml`, which pings `/health` from GitHub Actions every 10 minutes so the bot can wake while your PC is off.
 
+The Pages workflow tries to enable GitHub Pages automatically. If GitHub blocks that in repository settings, enable Pages once from GitHub Settings -> Pages -> Build and deployment -> GitHub Actions.
+
 After changing the site URL, update the bot menu button:
 
 ```sh
