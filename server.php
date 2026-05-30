@@ -3972,8 +3972,11 @@ function pollBotUpdates(): array {
     if (empty($result['ok'])) {
         $description = (string) ($result['description'] ?? '');
         if (stripos($description, 'webhook') !== false || stripos($description, 'conflict') !== false) {
-            botApi('deleteWebhook', ['drop_pending_updates' => false], 8);
-            return ['success' => true, 'processed' => 0, 'detail' => 'Webhook disabled; polling will continue.'];
+            return [
+                'success' => true,
+                'processed' => 0,
+                'detail' => 'Webhook is active; local polling skipped so the live bot stays online.',
+            ];
         }
 
         return ['error' => $description ?: 'Bot polling failed'];
