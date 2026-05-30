@@ -159,7 +159,7 @@ button:hover {
 }
 
 .search-panel,
-.status-card {
+.promo-card {
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--panel);
@@ -205,43 +205,68 @@ button:hover {
     overflow-wrap: break-word;
 }
 
-.status-grid {
+.promo-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
     margin-top: 14px;
 }
 
-.status-card {
+.promo-card {
     padding: 18px;
 }
 
-.status-card strong {
+.promo-card strong {
     display: block;
     margin-top: 8px;
     font-size: 1.45rem;
 }
 
-.status-card p {
+.promo-card p {
     margin: 8px 0 0;
     color: var(--muted);
     line-height: 1.45;
 }
 
-.status-card.accent .label {
+.promo-card.accent .label {
     color: var(--mint);
 }
 
-.status-card.warm .label {
+.promo-card.warm .label {
     color: var(--gold);
 }
 
-body[data-wake="online"] #wakeStatus {
-    color: var(--mint);
+.mini-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
 }
 
-body[data-wake="pending"] #wakeStatus {
-    color: var(--gold);
+.mini-link {
+    min-height: 42px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(126, 232, 255, 0.24);
+    border-radius: 8px;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+    font-weight: 850;
+    text-decoration: none;
+    transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.mini-links .mini-link {
+    flex: 1;
+    min-width: 120px;
+}
+
+.mini-link:hover {
+    transform: translateY(-2px);
+    border-color: rgba(84, 216, 255, 0.65);
+    background: rgba(84, 216, 255, 0.12);
 }
 
 @media (max-width: 760px) {
@@ -266,7 +291,7 @@ body[data-wake="pending"] #wakeStatus {
 
     .hero-copy,
     .search-panel,
-    .status-grid {
+    .promo-grid {
         width: 100%;
         max-width: 300px;
         margin-left: auto;
@@ -278,7 +303,7 @@ body[data-wake="pending"] #wakeStatus {
     }
 
     .search-panel,
-    .status-grid {
+    .promo-grid {
         grid-template-columns: 1fr;
     }
 

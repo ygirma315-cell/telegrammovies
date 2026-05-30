@@ -44,7 +44,7 @@ Optional:
 WEB_APP_URL
 ```
 
-`WEB_APP_URL` defaults to `https://raw.githack.com/ygirma315-cell/telegrammovies/main/docs/index.html`, so no new Render environment variable is required unless the web app URL changes.
+`WEB_APP_URL` defaults to `https://telegrammovies.onrender.com/app/`, so no new Render environment variable is required unless the web app URL changes.
 
 Do not commit `.env`, `sessions/`, `vendor/`, `composer.phar`, or log files.
 
@@ -72,18 +72,16 @@ Render free services can sleep when idle. To keep the bot responsive all the tim
 
 ## Mini site and keepalive
 
-The mini site lives in `docs/`. The default live URL is served from the GitHub repo through RawGitHack:
+The mini site lives in `docs/` and is served publicly by the Render app:
 
 ```text
-https://raw.githack.com/ygirma315-cell/telegrammovies/main/docs/index.html
+https://telegrammovies.onrender.com/app/
 ```
 
 The site pings Render while it is open. The stronger keepalive is `.github/workflows/keepalive.yml`, which pings `/health` from GitHub Actions every 10 minutes so the bot can wake while your PC is off.
 
-The Pages workflow is also included for the cleaner `https://ygirma315-cell.github.io/telegrammovies/` URL. If GitHub blocks it in repository settings, enable Pages once from GitHub Settings -> Pages -> Build and deployment -> GitHub Actions.
-
 After changing the site URL, update the bot menu button:
 
 ```sh
-php scripts/set_menu_button.php https://raw.githack.com/ygirma315-cell/telegrammovies/main/docs/index.html
+php scripts/set_menu_button.php https://telegrammovies.onrender.com/app/
 ```

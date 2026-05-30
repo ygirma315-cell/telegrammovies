@@ -54,6 +54,51 @@ function routerJson(array $data, int $status = 200): void {
     echo json_encode($data);
 }
 
+function routerServeMiniApp(string $path): bool {
+    if ($path !== '/app' && $path !== '/app/' && !str_starts_with($path, '/app/')) {
+        return false;
+    }
+
+    $base = realpath(__DIR__ . '/docs');
+    if ($base === false) {
+        routerJson(['ok' => false, 'error' => 'Mini app not found'], 404);
+        return true;
+    }
+
+    $relative = $path === '/app' || $path === '/app/' ? 'index.html' : ltrim(substr($path, 5), '/');
+    if ($relative === '' || str_ends_with($relative, '/')) {
+        $relative .= 'index.html';
+    }
+
+    $target = realpath($base . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative));
+    if ($target === false || !str_starts_with($target, $base . DIRECTORY_SEPARATOR) || !is_file($target)) {
+        routerJson(['ok' => false, 'error' => 'Not found'], 404);
+        return true;
+    }
+
+    $extension = strtolower(pathinfo($target, PATHINFO_EXTENSION));
+    $types = [
+        'html' => 'text/html; charset=utf-8',
+        'css' => 'text/css; charset=utf-8',
+        'js' => 'application/javascript; charset=utf-8',
+        'json' => 'application/json; charset=utf-8',
+        'webmanifest' => 'application/manifest+json; charset=utf-8',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+    ];
+
+    http_response_code(200);
+    routerCorsHeaders();
+    header('Content-Type: ' . ($types[$extension] ?? 'application/octet-stream'));
+    if ($extension !== 'html') {
+        header('Cache-Control: public, max-age=300');
+    }
+    readfile($target);
+    return true;
+}
+
 function routerAuthorized(string $password): bool {
     if ($password === '') {
         return true;
@@ -77,6 +122,10 @@ $adminPassword = (string) (getenv('ADMIN_PASSWORD') ?: '');
 
 if ($method === 'OPTIONS') {
     routerJson(['ok' => true]);
+    return true;
+}
+
+if (routerServeMiniApp($path)) {
     return true;
 }
 

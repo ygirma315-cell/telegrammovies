@@ -55,7 +55,7 @@ loadEnvFile(__DIR__ . '/../.env.render');
 loadEnvFile(__DIR__ . '/../.env');
 
 $token = (string) (getenv('TELEGRAM_BOT_TOKEN') ?: '');
-$url = (string) ($argv[1] ?? getenv('WEB_APP_URL') ?: 'https://raw.githack.com/ygirma315-cell/telegrammovies/main/docs/index.html');
+$url = (string) ($argv[1] ?? getenv('WEB_APP_URL') ?: 'https://telegrammovies.onrender.com/app/');
 
 if ($token === '') {
     fwrite(STDERR, "Missing TELEGRAM_BOT_TOKEN.\n");
