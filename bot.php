@@ -97,7 +97,7 @@ function botMainChannelUsername(): string {
 }
 
 function botWebAppUrl(): string {
-    return botEnv('WEB_APP_URL', 'https://ygirma315-cell.github.io/telegrammovies/');
+    return botEnv('WEB_APP_URL', 'https://raw.githack.com/ygirma315-cell/telegrammovies/main/docs/index.html');
 }
 
 function botWebAppKeyboard(): array {
