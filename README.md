@@ -38,6 +38,14 @@ BOT_MAX_FILES_PER_REQUEST
 MAIN_CHANNEL_USERNAME
 ```
 
+Optional:
+
+```text
+WEB_APP_URL
+```
+
+`WEB_APP_URL` defaults to `https://ygirma315-cell.github.io/telegrammovies/`, so no new Render environment variable is required unless the Pages URL changes.
+
 Do not commit `.env`, `sessions/`, `vendor/`, `composer.phar`, or log files.
 
 Use `/telegram/webhook` as the Telegram webhook path, for example:
@@ -61,3 +69,19 @@ https://your-render-service.onrender.com/health
 ```
 
 Render free services can sleep when idle. To keep the bot responsive all the time, use a paid always-on service or point an uptime monitor at `/health`.
+
+## Mini site and keepalive
+
+The mini site lives in `docs/` and is deployed by GitHub Pages:
+
+```text
+https://ygirma315-cell.github.io/telegrammovies/
+```
+
+The site pings Render while it is open. The stronger keepalive is `.github/workflows/keepalive.yml`, which pings `/health` from GitHub Actions every 10 minutes so the bot can wake while your PC is off.
+
+After changing the site URL, update the bot menu button:
+
+```sh
+php scripts/set_menu_button.php https://ygirma315-cell.github.io/telegrammovies/
+```

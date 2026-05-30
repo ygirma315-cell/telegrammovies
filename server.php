@@ -1658,6 +1658,14 @@ function buildPreviewItem(string $target, array $message, ?array $button = null)
     ];
 }
 
+function floodWaitSecondsFromMessage(string $message): int {
+    if (preg_match('/FLOOD_WAIT_?(\d+)/i', $message, $match)) {
+        return max(1, (int) $match[1]);
+    }
+
+    return 0;
+}
+
 function previewChannelLists(string $sourceInput, int $offsetId = 0, int $limit = 30, string $preferredBot = CHANNEL_IMPORT_PREFERRED_BOT, array $skipKeys = []): array {
     $madeline = getMadeline();
     if ($madeline->getAuthorization() !== API::LOGGED_IN) {
@@ -1674,61 +1682,131 @@ function previewChannelLists(string $sourceInput, int $offsetId = 0, int $limit 
     $target = $targets[0];
     $limit = max(1, min(80, $limit));
     $skip = array_fill_keys(array_map('strval', $skipKeys), true);
+    $historyLimit = min(100, max(30, $limit * 3));
+    $nextOffsetId = max(0, $offsetId);
+    $historyCount = 0;
+    $messagesScanned = 0;
+    $oldestId = 0;
+    $hasMore = false;
+    $items = [];
 
     try {
         $targetForInfo = ltrim($target, '@');
         $peer = $madeline->getInfo($targetForInfo, API::INFO_TYPE_PEER);
-        $history = $madeline->messages->getHistory([
-            'peer' => $peer,
-            'limit' => $limit,
-            'offset_id' => max(0, $offsetId),
-        ]);
     } catch (Throwable $error) {
-        return ['error' => $error->getMessage()];
+        $wait = floodWaitSecondsFromMessage($error->getMessage());
+        return [
+            'error' => $error->getMessage(),
+            'rate_limited' => $wait > 0,
+            'retry_after' => $wait,
+        ];
     }
 
-    $items = [];
-    $oldestId = 0;
-    foreach ((array) ($history['messages'] ?? []) as $message) {
-        if (!is_array($message)) {
-            continue;
-        }
-        $messageId = (int) ($message['id'] ?? 0);
-        if ($messageId > 0) {
-            $oldestId = $oldestId === 0 ? $messageId : min($oldestId, $messageId);
+    for ($page = 0; $page < 8 && count($items) < $limit; $page++) {
+        try {
+            $history = $madeline->messages->getHistory([
+                'peer' => $peer,
+                'limit' => $historyLimit,
+                'offset_id' => $nextOffsetId,
+            ]);
+        } catch (Throwable $error) {
+            $wait = floodWaitSecondsFromMessage($error->getMessage());
+            return [
+                'error' => $error->getMessage(),
+                'rate_limited' => $wait > 0,
+                'retry_after' => $wait,
+                'items' => array_values($items),
+                'next_offset_id' => $oldestId ?: $nextOffsetId,
+                'has_more' => $hasMore || $oldestId > 1,
+                'history_count' => $historyCount,
+                'total_batches' => $historyCount > 0 ? (int) ceil($historyCount / $limit) : 0,
+                'total_files' => 0,
+                'batch_size' => $limit,
+                'scanned_messages' => $messagesScanned,
+            ];
         }
 
-        if (messageHasDocument($message)) {
-            $item = buildPreviewItem($target, $message);
-            if (empty($skip[$item['key']]) && !$item['stored']) {
-                $items[] = $item;
+        $historyMessages = (array) ($history['messages'] ?? []);
+        if ($historyCount <= 0) {
+            $historyCount = (int) ($history['count'] ?? 0);
+        }
+        $messagesScanned += count($historyMessages);
+        if (!$historyMessages) {
+            break;
+        }
+
+        $pageOldestId = 0;
+        foreach ($historyMessages as $message) {
+            if (!is_array($message)) {
+                continue;
             }
-        }
+            $messageId = (int) ($message['id'] ?? 0);
+            if ($messageId > 0) {
+                $pageOldestId = $pageOldestId === 0 ? $messageId : min($pageOldestId, $messageId);
+                $oldestId = $oldestId === 0 ? $messageId : min($oldestId, $messageId);
+            }
 
-        if ($includeBotButtons) {
-            $buttonItems = [];
-            foreach (($message['reply_markup']['rows'] ?? []) as $row) {
-                foreach (($row['buttons'] ?? []) as $button) {
-                    if (!isImportButton($button)) {
-                        continue;
-                    }
-                    $item = buildPreviewItem($target, $message, $button);
-                    if (empty($skip[$item['key']]) && !$item['stored']) {
-                        $buttonItems[] = $item;
+            if (messageHasDocument($message)) {
+                $item = buildPreviewItem($target, $message);
+                if (empty($skip[$item['key']])) {
+                    $items[] = $item;
+                    $skip[$item['key']] = true;
+                    if (count($items) >= $limit) {
+                        break;
                     }
                 }
             }
-            usort($buttonItems, fn($left, $right) => startUrlScore($right['bot'] ? ['domain' => ltrim((string) $right['bot'], '@')] : null, $preferredBot) <=> startUrlScore($left['bot'] ? ['domain' => ltrim((string) $left['bot'], '@')] : null, $preferredBot));
-            array_push($items, ...$buttonItems);
+
+            if ($includeBotButtons) {
+                $buttonItems = [];
+                foreach (($message['reply_markup']['rows'] ?? []) as $row) {
+                    foreach (($row['buttons'] ?? []) as $button) {
+                        if (!isImportButton($button)) {
+                            continue;
+                        }
+                        $item = buildPreviewItem($target, $message, $button);
+                        if (empty($skip[$item['key']])) {
+                            $buttonItems[] = $item;
+                            $skip[$item['key']] = true;
+                        }
+                    }
+                }
+                usort($buttonItems, fn($left, $right) => startUrlScore($right['bot'] ? ['domain' => ltrim((string) $right['bot'], '@')] : null, $preferredBot) <=> startUrlScore($left['bot'] ? ['domain' => ltrim((string) $left['bot'], '@')] : null, $preferredBot));
+                foreach ($buttonItems as $buttonItem) {
+                    $items[] = $buttonItem;
+                    if (count($items) >= $limit) {
+                        break;
+                    }
+                }
+            }
         }
+
+        if ($pageOldestId <= 1 || count($historyMessages) < $historyLimit || $pageOldestId === $nextOffsetId) {
+            $hasMore = false;
+            break;
+        }
+
+        $hasMore = true;
+        $nextOffsetId = $pageOldestId;
+        usleep(350000);
     }
+
+    if ($historyCount <= 0 && $offsetId <= 0 && $messagesScanned < $historyLimit) {
+        $historyCount = $messagesScanned;
+    }
+    $totalBatches = $historyCount > 0 ? (int) ceil($historyCount / $limit) : 0;
 
     return [
         'success' => true,
         'target' => $target,
         'items' => array_values($items),
         'next_offset_id' => $oldestId,
-        'has_more' => $oldestId > 1 && count((array) ($history['messages'] ?? [])) >= $limit,
+        'has_more' => $hasMore,
+        'history_count' => $historyCount,
+        'total_batches' => $totalBatches,
+        'total_files' => 0,
+        'batch_size' => $limit,
+        'scanned_messages' => $messagesScanned,
     ];
 }
 
@@ -1781,6 +1859,7 @@ function importSelectedChannelLists(
     $cooldownSeconds = max(0, min(600, $cooldownSeconds));
     $maxStoredTotal = $fileLimit > 0 ? $fileLimit : PHP_INT_MAX;
     $maxBotClicks = $fileLimit > 0 ? max(CHANNEL_IMPORT_SELECTED_MAX_BOT_CLICKS, $fileLimit) : PHP_INT_MAX;
+    $itemGapUsec = 300000;
     foreach ($items as $item) {
         if (shouldStopScrape()) {
             streamJsonLine(['status' => 'stopped']);
@@ -1936,15 +2015,20 @@ function importSelectedChannelLists(
                     'cooldown_seconds' => $waitSeconds,
                 ]);
                 streamJsonLine([
-                    'status' => 'stopped',
+                    'status' => 'rate_limited',
                     'title' => $fallbackTitle,
-                    'detail' => 'rate limited',
+                    'detail' => 'retrying this same row after the wait',
+                    'retry_after' => $waitSeconds,
                 ]);
                 break;
             }
 
             streamJsonLine(['status' => 'found_no_file', 'title' => $fallbackTitle, 'detail' => $errorMessage]);
             streamSelectedBatchComplete($fallbackTitle, $itemStoredBefore, $storedTotal);
+        } finally {
+            if (!shouldStopScrape()) {
+                usleep($itemGapUsec);
+            }
         }
     }
 

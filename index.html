@@ -63,7 +63,10 @@
         .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
         .panel-head h3 { margin: 0; color: #dff8ff; }
         .batch-pill { color: var(--cyan); border: 1px solid rgba(56, 231, 255, 0.24); border-radius: 4px; padding: 4px 8px; font-size: 12px; font-weight: 800; }
-        .list-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        .batch-metrics { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+        .batch-jump { width: 98px; margin: 0; padding: 4px 8px; border: 1px solid rgba(56, 231, 255, 0.24); border-radius: 4px; background: #07101a; color: var(--cyan); font-size: 12px; font-weight: 800; text-align: center; }
+        .batch-jump:disabled { opacity: 0.7; cursor: not-allowed; }
+        .list-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; }
         .list-actions button { margin: 0; font-size: 13px; }
         .primary-action { margin-top: 10px; background: linear-gradient(135deg, #1b8f78, #275fc5); }
         .status-strip { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 10px; min-height: 24px; }
@@ -235,14 +238,16 @@
                     </div>
                     <div class="list-actions">
                         <button id="channelFetchButton" onclick="fetchChannelLists(true)">Fetch Batch</button>
-                        <button id="channelNextButton" class="secondary" onclick="fetchChannelLists(false)" disabled>Next Batch</button>
+                        <button id="channelFetchAllButton" onclick="fetchAllChannelLists()">Fetch All</button>
+                        <button id="channelPrevButton" class="secondary" onclick="previousChannelBatch()" disabled>Previous Batch</button>
+                        <button id="channelNextButton" class="secondary" onclick="nextChannelBatch()" disabled>Next Batch</button>
                         <button id="channelSelectAllButton" class="secondary" onclick="toggleListSelection(true)" disabled>Select All</button>
                         <button id="channelClearSelectedButton" class="danger" onclick="toggleListSelection(false)" disabled>Clear</button>
                     </div>
                     <button id="channelImportSelectedButton" class="primary-action" onclick="importSelectedLists()" disabled>Import Selected</button>
                     <div class="list-actions">
                         <button id="channelPauseButton" class="secondary" onclick="pauseChannelImport()" disabled>Pause</button>
-                        <button id="channelContinueButton" onclick="continueChannelImport()" disabled>Continue</button>
+                        <button id="channelContinueButton" onclick="toggleChannelImportRun()" disabled>Continue</button>
                         <button id="channelStopButton" class="danger" onclick="stopChannelImport()" disabled>Stop</button>
                         <button id="channelClearQueueButton" class="danger" onclick="clearSavedChannelImportQueue(true)" disabled>Clear Queue</button>
                     </div>
@@ -255,7 +260,10 @@
                 <div class="tool-panel">
                     <div class="panel-head">
                         <h3>Choose Lists</h3>
-                        <span id="channelBatchLabel" class="batch-pill">Batch 0</span>
+                        <div class="batch-metrics">
+                            <input id="channelBatchJump" class="batch-jump" value="0/0" onchange="jumpChannelBatchFromInput()" onkeydown="if (event.key === 'Enter') jumpChannelBatchFromInput()" disabled title="Jump to fetched batch">
+                            <span id="channelFileCount" class="batch-pill" title="Files in current batch / total files">Files 0/0</span>
+                        </div>
                     </div>
                     <div id="channelListResults" class="list-results">
                         <div class="empty-state">Fetch a channel batch to choose file rows.</div>
@@ -523,6 +531,10 @@ let channelListState = {
     items: [],
     hasMore: false,
     batch: 0,
+    viewBatch: 0,
+    totalBatches: 0,
+    totalHistoryCount: 0,
+    totalFiles: 0,
     busy: false
 };
 let channelImportRun = {total: 0, done: 0, files: 0};
@@ -909,7 +921,7 @@ function readSavedChannelImportQueue() {
         let queue = JSON.parse(localStorage.getItem(channelImportQueueKey) || 'null');
         if (!queue || !Array.isArray(queue.remaining)) return null;
         queue.remaining = queue.remaining.filter(item => item && item.key && item.target && item.message_id);
-        if (!queue.remaining.length) return null;
+        if (!queue.remaining.length && !queue.autoFetch && !queue.hasMore) return null;
 
         return {
             target: queue.target || '',
@@ -921,6 +933,15 @@ function readSavedChannelImportQueue() {
             total: Math.max(queue.remaining.length, Number(queue.total || queue.remaining.length)),
             done: Math.max(0, Number(queue.done || 0)),
             files: Math.max(0, Number(queue.files || 0)),
+            autoFetch: !!queue.autoFetch,
+            hasMore: !!queue.hasMore,
+            nextBatch: Math.max(1, Number(queue.nextBatch || 1)),
+            offsetId: Math.max(0, Number(queue.offsetId || 0)),
+            fetchedBatch: Math.max(0, Number(queue.fetchedBatch || 0)),
+            totalBatches: Math.max(0, Number(queue.totalBatches || 0)),
+            totalFiles: Math.max(0, Number(queue.totalFiles || 0)),
+            totalHistoryCount: Math.max(0, Number(queue.totalHistoryCount || 0)),
+            fetchPaused: !!queue.fetchPaused,
             importedKeys: Array.isArray(queue.importedKeys) ? queue.importedKeys.filter(Boolean) : [],
             updatedAt: Number(queue.updatedAt || Date.now())
         };
@@ -930,7 +951,7 @@ function readSavedChannelImportQueue() {
 }
 
 function saveChannelImportQueue(queue) {
-    if (!queue || !Array.isArray(queue.remaining) || !queue.remaining.length) {
+    if (!queue || !Array.isArray(queue.remaining) || (!queue.remaining.length && !queue.autoFetch && !queue.hasMore)) {
         localStorage.removeItem(channelImportQueueKey);
         return;
     }
@@ -988,15 +1009,38 @@ function updateChannelSelectionCount() {
     return {selected, total};
 }
 
+function visibleChannelEntries() {
+    let viewBatch = Number(channelListState.viewBatch || channelListState.batch || 0);
+    return (channelListState.items || [])
+        .map((item, index) => ({item, index}))
+        .filter(entry => Number(entry.item.batch || 1) === viewBatch);
+}
+
+function visibleChannelItems() {
+    return visibleChannelEntries().map(entry => entry.item);
+}
+
+function parseFloodWaitSeconds(message) {
+    let match = String(message || '').match(/FLOOD_WAIT_?(\d+)/i);
+    return match ? Math.max(1, Number(match[1] || 0)) : 0;
+}
+
 function updateChannelControls() {
-    let hasItems = (channelListState.items || []).length > 0;
+    let hasItems = visibleChannelItems().length > 0;
     let selection = updateChannelSelectionCount();
     let savedQueue = readSavedChannelImportQueue();
     let hasSavedQueue = !!savedQueue;
     let busy = channelListState.busy || channelImportRunning;
+    let viewBatch = Number(channelListState.viewBatch || 0);
+    let latestBatch = Number(channelListState.batch || 0);
+    let totalBatches = Math.max(Number(channelListState.totalBatches || 0), latestBatch);
+    let currentFiles = visibleChannelItems().length;
+    let totalFiles = Math.max(Number(channelListState.totalFiles || 0), (channelListState.items || []).length);
     let controls = [
         ['channelFetchButton', busy],
-        ['channelNextButton', busy || !channelListState.hasMore],
+        ['channelFetchAllButton', busy],
+        ['channelPrevButton', busy || viewBatch <= 1],
+        ['channelNextButton', busy || (!channelListState.hasMore && viewBatch >= latestBatch)],
         ['channelSelectAllButton', busy || !hasItems],
         ['channelClearSelectedButton', busy || !hasItems],
         ['channelImportSelectedButton', busy || selection.selected === 0],
@@ -1010,18 +1054,33 @@ function updateChannelControls() {
         if (button) button.disabled = disabled;
     }
 
-    let label = document.getElementById('channelBatchLabel');
-    if (label) {
-        label.textContent = channelListState.batch
-            ? `${channelListState.batch} batch${channelListState.batch === 1 ? '' : 'es'} fetched`
-            : 'Batch 0';
+    let continueButton = document.getElementById('channelContinueButton');
+    if (continueButton) {
+        continueButton.textContent = channelImportRunning ? 'Pause' : 'Continue';
+        continueButton.disabled = channelImportRunning ? channelImportPaused : !hasSavedQueue;
+    }
+
+    let jump = document.getElementById('channelBatchJump');
+    if (jump) {
+        jump.disabled = busy || !latestBatch;
+        if (document.activeElement !== jump || busy) {
+            jump.value = latestBatch ? `${viewBatch || latestBatch}/${totalBatches}` : '0/0';
+        }
+    }
+
+    let fileCount = document.getElementById('channelFileCount');
+    if (fileCount) {
+        fileCount.textContent = `Files ${currentFiles}/${totalFiles || 0}`;
+        fileCount.title = channelListState.totalFiles
+            ? 'Files in current batch / total document files in channel'
+            : 'Files in current batch / fetched selectable files';
     }
 }
 
 function renderChannelListResults() {
     let container = document.getElementById('channelListResults');
-    let items = channelListState.items || [];
-    if (!items.length) {
+    let entries = visibleChannelEntries();
+    if (!entries.length) {
         container.innerHTML = channelListState.batch
             ? '<div class="empty-state">No selectable file rows in fetched history.</div>'
             : '<div class="empty-state">Fetch a channel batch to choose file rows.</div>';
@@ -1029,17 +1088,78 @@ function renderChannelListResults() {
         return;
     }
 
-    container.innerHTML = items.map((item, index) => `
+    container.innerHTML = entries.map(({item, index}) => `
         <label class="list-item">
-            <input type="checkbox" class="channel-list-check" data-index="${index}" onchange="updateChannelSelectionCount()" checked>
+            <input type="checkbox" class="channel-list-check" data-index="${index}" onchange="updateChannelSelectionCount()" ${item.stored ? '' : 'checked'}>
             <span>
                 <span class="list-title">${escapeHtml(item.title || item.label || 'Untitled')}</span>
-                <span class="list-meta">batch ${escapeHtml(item.batch || 1)} | ${escapeHtml(item.kind || 'item')} | ${escapeHtml(item.label || '')}${item.bot ? ' | ' + escapeHtml(item.bot) : ''} | msg ${escapeHtml(item.message_id)}</span>
+                <span class="list-meta">batch ${escapeHtml(item.batch || 1)} | ${escapeHtml(item.kind || 'item')} | ${escapeHtml(item.label || '')}${item.stored ? ' | already stored' : ''}${item.bot ? ' | ' + escapeHtml(item.bot) : ''} | msg ${escapeHtml(item.message_id)}</span>
                 <span class="list-meta">${escapeHtml(item.snippet || '')}</span>
             </span>
         </label>
     `).join('');
     updateChannelControls();
+}
+
+function showChannelBatch(batchNumber) {
+    let latestBatch = Number(channelListState.batch || 0);
+    if (!latestBatch) return;
+    channelListState.viewBatch = Math.max(1, Math.min(latestBatch, Number(batchNumber || latestBatch)));
+    renderChannelListResults();
+    let totalBatches = Math.max(Number(channelListState.totalBatches || 0), latestBatch);
+    setChannelListStatus(`Viewing batch ${channelListState.viewBatch} of ${totalBatches}.`, 'info');
+}
+
+async function jumpChannelBatchFromInput() {
+    if (channelListState.busy || channelImportRunning) {
+        updateChannelControls();
+        return;
+    }
+
+    let input = document.getElementById('channelBatchJump');
+    let latestBatch = Number(channelListState.batch || 0);
+    if (!input || !latestBatch) return;
+
+    let match = String(input.value || '').match(/\d+/);
+    if (!match) {
+        updateChannelControls();
+        return;
+    }
+
+    let targetBatch = Math.max(1, Number(match[0]));
+    let totalBatches = Math.max(Number(channelListState.totalBatches || 0), latestBatch);
+    if (targetBatch > totalBatches) {
+        targetBatch = totalBatches;
+    }
+
+    while (targetBatch > Number(channelListState.batch || 0) && channelListState.hasMore) {
+        let before = Number(channelListState.batch || 0);
+        await fetchChannelLists(false);
+        if (Number(channelListState.batch || 0) <= before) break;
+    }
+
+    if (targetBatch <= Number(channelListState.batch || 0)) {
+        showChannelBatch(targetBatch);
+    } else {
+        updateChannelControls();
+        setChannelListStatus(`Only ${channelListState.batch} batch(es) are reachable right now.`, 'info');
+    }
+}
+
+function previousChannelBatch() {
+    if (!channelListState.batch || channelListState.busy || channelImportRunning) return;
+    showChannelBatch(Number(channelListState.viewBatch || channelListState.batch) - 1);
+}
+
+async function nextChannelBatch() {
+    if (channelListState.busy || channelImportRunning) return;
+    let latestBatch = Number(channelListState.batch || 0);
+    let viewBatch = Number(channelListState.viewBatch || latestBatch || 0);
+    if (viewBatch < latestBatch) {
+        showChannelBatch(viewBatch + 1);
+        return;
+    }
+    await fetchChannelLists(false);
 }
 
 function toggleListSelection(checked) {
@@ -1066,15 +1186,17 @@ function resolveChannelListTarget() {
     return normalizeTargetUsername(raw);
 }
 
-async function fetchChannelLists(reset = true) {
+async function fetchChannelListBatch(reset = true, options = {}) {
     let target = resolveChannelListTarget();
     let preferredBot = normalizeTargetUsername(document.getElementById('channelListBot').value);
     let fileLimit = optionalPositiveInt(document.getElementById('channelListLimit').value);
     let pageSize = channelBatchSize();
+    let quiet = !!options.quiet;
+    let keepView = !!options.keepView;
 
     if (!target) {
         setChannelListStatus('Add a channel, or save one source first.', 'error');
-        return;
+        return {success: false};
     }
 
     if (!reset && channelListState.target && channelListState.target !== target) {
@@ -1086,24 +1208,26 @@ async function fetchChannelLists(reset = true) {
         channelListState.items = [];
         channelListState.target = target;
         channelListState.batch = 0;
+        channelListState.viewBatch = 0;
+        channelListState.totalBatches = 0;
+        channelListState.totalHistoryCount = 0;
+        channelListState.totalFiles = 0;
         channelListState.hasMore = false;
     }
 
     if (!reset && channelListState.batch && !channelListState.hasMore) {
         setChannelListStatus('No more channel history batches were reported.', 'info');
         updateChannelControls();
-        return;
+        return {success: false, noMore: true};
     }
 
     if (fileLimit && channelListState.items.length >= fileLimit) {
         setChannelListStatus(`Already showing ${fileLimit} file row(s). Clear or raise file count to fetch more.`, 'info');
         updateChannelControls();
-        return;
+        return {success: false, stopAtLimit: true};
     }
 
-    setChannelListStatus(reset ? 'Fetching first batch...' : 'Fetching next batch...');
-    channelListState.busy = true;
-    updateChannelControls();
+    if (!quiet) setChannelListStatus(reset ? 'Fetching first batch...' : 'Fetching next batch...');
     document.getElementById('channelListSource').value = target;
     document.getElementById('channelListBot').value = preferredBot;
     saveTargetUsernames([target]);
@@ -1111,7 +1235,6 @@ async function fetchChannelLists(reset = true) {
     try {
         let offsetId = reset ? 0 : Number(channelListState.offsetId || 0);
         let seenKeys = new Set([
-            ...readImportedListKeys(),
             ...(channelListState.items || []).map(item => item.key).filter(Boolean)
         ]);
         let data = await apiAction('preview_channel_lists', {
@@ -1123,11 +1246,17 @@ async function fetchChannelLists(reset = true) {
         });
 
         if (!data.success) {
+            let retryAfter = Number(data.retry_after || parseFloodWaitSeconds(data.error));
+            if (data.rate_limited || retryAfter > 0) {
+                setChannelListStatus(`Telegram limited this account: ${data.error || 'FLOOD_WAIT_' + retryAfter}. Wait ${retryAfter}s, then continue.`, 'error');
+                return {success: false, rateLimited: true, retryAfter, error: data.error || ''};
+            }
             setChannelListStatus(data.error || 'Batch fetch failed', 'error');
-            return;
+            return {success: false, error: data.error || ''};
         }
 
         let batchNumber = channelListState.batch + 1;
+        let previousView = Number(channelListState.viewBatch || 0);
         let added = 0;
         let stopAtLimit = false;
         let batchItems = (data.items || [])
@@ -1145,14 +1274,84 @@ async function fetchChannelLists(reset = true) {
         }
 
         channelListState.batch = batchNumber;
+        channelListState.viewBatch = keepView && previousView ? Math.min(previousView, batchNumber) : batchNumber;
+        channelListState.totalHistoryCount = Math.max(Number(data.history_count || 0), Number(channelListState.totalHistoryCount || 0));
+        channelListState.totalBatches = Math.max(Number(data.total_batches || 0), Number(channelListState.totalBatches || 0), batchNumber);
+        channelListState.totalFiles = Math.max(Number(data.total_files || 0), Number(channelListState.totalFiles || 0));
         channelListState.offsetId = Number(data.next_offset_id || 0);
         channelListState.hasMore = !!data.has_more && !stopAtLimit && channelListState.offsetId > 0 && channelListState.offsetId !== offsetId;
         renderChannelListResults();
         let nextText = channelListState.hasMore ? 'Press Next Batch for more.' : 'Reached the end of fetched history.';
         if (stopAtLimit) nextText = `Stopped at ${fileLimit} file row(s).`;
-        setChannelListStatus(`Batch ${batchNumber}: ${added} new row(s), ${channelListState.items.length} total. ${nextText}`, added ? 'success' : 'info');
+        let totalText = channelListState.totalBatches ? ` of ${channelListState.totalBatches}` : '';
+        if (!quiet) setChannelListStatus(`Batch ${batchNumber}${totalText}: ${added} new row(s), ${channelListState.items.length} total. ${nextText}`, added ? 'success' : 'info');
+        return {success: true, batchNumber, added, stopAtLimit};
     } catch (error) {
+        let retryAfter = parseFloodWaitSeconds(error.message);
+        if (retryAfter > 0) {
+            setChannelListStatus(`Telegram limited this account: ${error.message}. Wait ${retryAfter}s, then continue.`, 'error');
+            return {success: false, rateLimited: true, retryAfter, error: error.message || ''};
+        }
         setChannelListStatus(error.message || 'Batch fetch failed', 'error');
+        return {success: false, error: error.message || ''};
+    }
+}
+
+async function fetchChannelLists(reset = true) {
+    if (channelListState.busy || channelImportRunning) return {success: false};
+
+    channelListState.busy = true;
+    updateChannelControls();
+    try {
+        return await fetchChannelListBatch(reset);
+    } finally {
+        channelListState.busy = false;
+        updateChannelControls();
+    }
+}
+
+async function fetchAllChannelLists() {
+    if (channelListState.busy || channelImportRunning) return;
+
+    channelListState.busy = true;
+    updateChannelControls();
+    setChannelListStatus('Fetching all batches for counting...');
+
+    let target = resolveChannelListTarget();
+    let shouldReset = !channelListState.batch || channelListState.target !== target;
+    let fetched = 0;
+    let added = 0;
+    let first = shouldReset;
+    try {
+        while (true) {
+            let result = await fetchChannelListBatch(first, {quiet: true, keepView: true});
+            if (!result.success) {
+                if (result.rateLimited) {
+                    setChannelListStatus(`Fetch paused: Telegram limited this account (${result.error || 'FLOOD_WAIT_' + result.retryAfter}). Wait ${result.retryAfter}s, then press Fetch All again to continue.`, 'error');
+                }
+                break;
+            }
+            fetched++;
+            added += Number(result.added || 0);
+
+            let totalBatches = Math.max(Number(channelListState.totalBatches || 0), Number(channelListState.batch || 0));
+            setChannelListStatus(`Fetched ${channelListState.batch}/${totalBatches} batch(es), ${channelListState.items.length} file row(s).`, 'info');
+
+            if (!channelListState.hasMore || result.stopAtLimit) break;
+            first = false;
+            await delay(1000);
+        }
+
+        if (channelListState.batch) {
+            channelListState.viewBatch = 1;
+        }
+        renderChannelListResults();
+        let totalFiles = channelListState.items.length;
+        let totalBatches = Math.max(Number(channelListState.totalBatches || 0), Number(channelListState.batch || 0));
+        let exactFileBatches = totalFiles ? Math.ceil(totalFiles / channelBatchSize()) : totalBatches;
+        channelListState.totalFiles = totalFiles;
+        channelListState.totalBatches = Math.max(channelListState.batch, exactFileBatches);
+        setChannelListStatus(`Fetch all done: ${channelListState.batch}/${channelListState.totalBatches} batch(es), ${channelListState.items.length}/${totalFiles} file row(s). Showing batch 1.`, channelListState.items.length ? 'success' : 'info');
     } finally {
         channelListState.busy = false;
         updateChannelControls();
@@ -1191,6 +1390,9 @@ function handleChannelImportEvent(data) {
         updateChannelImportProgress();
     } else if (data.status === 'cooldown') {
         setChannelListStatus(data.detail || 'Cooling down before the next import batch.', 'info');
+    } else if (data.status === 'rate_limited') {
+        let wait = Number(data.retry_after || data.cooldown_seconds || 0);
+        setChannelListStatus(`Telegram rate limit. Waiting ${wait}s, then retrying the same row.`, 'info');
     } else if (data.status === 'stopped') {
         setChannelListStatus('Import stopped. Press Continue to resume the saved queue.', 'info');
     } else if (data.status === 'complete') {
@@ -1205,16 +1407,30 @@ async function importSelectedLists() {
         return;
     }
 
+    let currentBatch = Number(channelListState.viewBatch || channelListState.batch || 1);
+    let laterFetchedItems = (channelListState.items || [])
+        .filter(item => Number(item.batch || 1) > currentBatch)
+        .sort((left, right) => Number(left.batch || 1) - Number(right.batch || 1));
+    let queuedItems = [...selected, ...laterFetchedItems];
+
     let queue = {
         target: resolveChannelListTarget(),
         preferredBot: normalizeTargetUsername(document.getElementById('channelListBot').value),
         fileLimit: optionalPositiveInt(document.getElementById('channelListLimit').value),
         batchSize: channelBatchSize(),
         restSeconds: channelRestSeconds(),
-        remaining: selected,
-        total: selected.length,
+        remaining: queuedItems,
+        total: queuedItems.length,
         done: 0,
         files: 0,
+        autoFetch: true,
+        hasMore: !!channelListState.hasMore,
+        nextBatch: Number(channelListState.batch || currentBatch) + 1,
+        offsetId: Number(channelListState.offsetId || 0),
+        fetchedBatch: Number(channelListState.batch || currentBatch),
+        totalBatches: Number(channelListState.totalBatches || 0),
+        totalFiles: Number(channelListState.totalFiles || 0),
+        totalHistoryCount: Number(channelListState.totalHistoryCount || 0),
         importedKeys: [],
         updatedAt: Date.now()
     };
@@ -1223,7 +1439,7 @@ async function importSelectedLists() {
     channelImportRun = {total: queue.total, done: 0, files: 0};
     channelImportPaused = false;
     channelImportStopped = false;
-    addLog(`Queued ${selected.length} selected row(s). Importing ${queue.batchSize} at a time.`, 'info');
+    addLog(`Queued ${queuedItems.length} row(s). Importing ${queue.batchSize} at a time and auto-fetching next batches.`, 'info');
     await runSavedChannelImportQueue();
 }
 
@@ -1243,8 +1459,19 @@ async function continueChannelImport() {
     channelImportRun = {total: queue.total, done: queue.done, files: queue.files};
     channelImportPaused = false;
     channelImportStopped = false;
+    queue.fetchPaused = false;
+    saveChannelImportQueue(queue);
     addLog(`Continuing saved queue with ${queue.remaining.length} row(s) left.`, 'info');
     await runSavedChannelImportQueue();
+}
+
+async function toggleChannelImportRun() {
+    if (channelImportRunning) {
+        pauseChannelImport();
+        return;
+    }
+
+    await continueChannelImport();
 }
 
 function pauseChannelImport() {
@@ -1278,6 +1505,93 @@ async function stopChannelImport() {
     updateChannelControls();
 }
 
+function rememberQueueFetchPosition(queue) {
+    queue.hasMore = !!channelListState.hasMore;
+    queue.offsetId = Number(channelListState.offsetId || 0);
+    queue.fetchedBatch = Number(channelListState.batch || queue.fetchedBatch || 0);
+    queue.nextBatch = Number(channelListState.batch || queue.fetchedBatch || 0) + 1;
+    queue.totalBatches = Number(channelListState.totalBatches || queue.totalBatches || 0);
+    queue.totalFiles = Number(channelListState.totalFiles || queue.totalFiles || 0);
+    queue.totalHistoryCount = Number(channelListState.totalHistoryCount || queue.totalHistoryCount || 0);
+    return queue;
+}
+
+function restoreChannelStateFromQueue(queue) {
+    if (!queue) return;
+    if (queue.target) channelListState.target = queue.target;
+    channelListState.offsetId = Number(channelListState.offsetId || queue.offsetId || 0);
+    channelListState.batch = Math.max(Number(channelListState.batch || 0), Number(queue.fetchedBatch || 0));
+    channelListState.totalBatches = Math.max(Number(channelListState.totalBatches || 0), Number(queue.totalBatches || 0), Number(queue.fetchedBatch || 0));
+    channelListState.totalFiles = Math.max(Number(channelListState.totalFiles || 0), Number(queue.totalFiles || 0));
+    channelListState.totalHistoryCount = Math.max(Number(channelListState.totalHistoryCount || 0), Number(queue.totalHistoryCount || 0));
+    channelListState.hasMore = !!(channelListState.hasMore || queue.hasMore);
+}
+
+function mergeQueuedRowsIntoView(queue) {
+    if (!queue || !Array.isArray(queue.remaining)) return;
+    let keys = new Set((channelListState.items || []).map(item => item.key).filter(Boolean));
+    for (let item of queue.remaining) {
+        if (!item || !item.key || keys.has(item.key)) continue;
+        channelListState.items.push(item);
+        keys.add(item.key);
+        channelListState.batch = Math.max(Number(channelListState.batch || 0), Number(item.batch || 0));
+    }
+    if (queue.remaining[0]?.batch) {
+        channelListState.viewBatch = Number(queue.remaining[0].batch || channelListState.viewBatch || 1);
+    }
+}
+
+function focusNextQueuedBatch(queue) {
+    let next = queue?.remaining?.[0];
+    if (!next) return;
+    let batch = Number(next.batch || channelListState.viewBatch || 1);
+    if (batch > 0 && channelListState.viewBatch !== batch) {
+        channelListState.viewBatch = batch;
+    }
+    renderChannelListResults();
+}
+
+async function fillQueueFromNextFetchedBatch(queue) {
+    restoreChannelStateFromQueue(queue);
+
+    while (
+        queue.autoFetch
+        && !queue.remaining.length
+        && !channelImportPaused
+        && !channelImportStopped
+        && (queue.hasMore || channelListState.hasMore)
+    ) {
+        setChannelListStatus(`Fetching batch ${Number(channelListState.batch || queue.fetchedBatch || 0) + 1} for auto import...`, 'info');
+        let beforeBatch = Number(channelListState.batch || 0);
+        let result = await fetchChannelListBatch(false, {quiet: true});
+        rememberQueueFetchPosition(queue);
+
+        if (!result.success || Number(channelListState.batch || 0) <= beforeBatch) {
+            queue.fetchPaused = !result.noMore && !result.stopAtLimit;
+            break;
+        }
+
+        let fetchedBatch = Number(result.batchNumber || channelListState.batch || 0);
+        let newRows = (channelListState.items || [])
+            .filter(item => Number(item.batch || 0) === fetchedBatch)
+            .filter(item => item && item.key);
+
+        if (newRows.length) {
+            queue.remaining = newRows;
+            queue.total += newRows.length;
+            channelImportRun.total = queue.total;
+            channelListState.viewBatch = fetchedBatch;
+            renderChannelListResults();
+            saveChannelImportQueue(queue);
+            addLog(`Fetched batch ${fetchedBatch} and queued ${newRows.length} row(s).`, 'info');
+            return queue;
+        }
+    }
+
+    saveChannelImportQueue(queue);
+    return queue;
+}
+
 async function runSavedChannelImportQueue() {
     if (channelImportRunning) return;
 
@@ -1290,10 +1604,12 @@ async function runSavedChannelImportQueue() {
 
     channelImportRunning = true;
     channelListState.busy = true;
+    restoreChannelStateFromQueue(queue);
+    mergeQueuedRowsIntoView(queue);
     updateChannelControls();
 
     try {
-        while (queue && queue.remaining.length) {
+        while (queue && (queue.remaining.length || (queue.autoFetch && queue.hasMore))) {
             if (channelImportStopped || channelImportPaused) break;
             if (queue.fileLimit > 0 && queue.files >= queue.fileLimit) {
                 localStorage.removeItem(channelImportQueueKey);
@@ -1301,6 +1617,21 @@ async function runSavedChannelImportQueue() {
                 break;
             }
 
+            queue = await fillQueueFromNextFetchedBatch(queue);
+            if (!queue.remaining.length) {
+                if (queue.fetchPaused) {
+                    saveChannelImportQueue(queue);
+                    setChannelListStatus('Fetching next batch paused after an error. Press Continue to retry.', 'error');
+                    break;
+                }
+                localStorage.removeItem(channelImportQueueKey);
+                updateChannelImportProgress();
+                setChannelListStatus(`Import finished. ${queue.done}/${queue.total} row(s), ${queue.files} file(s) stored.`, 'success');
+                addLog('Selected channel import finished.', 'info');
+                break;
+            }
+
+            focusNextQueuedBatch(queue);
             let chunk = queue.remaining.slice(0, queue.batchSize || 20);
             channelImportRun = {total: queue.total, done: queue.done, files: queue.files};
             updateChannelImportProgress();
@@ -1329,6 +1660,21 @@ async function runSavedChannelImportQueue() {
             }
 
             if (!queue.remaining.length) {
+                rememberQueueFetchPosition(queue);
+                if (queue.autoFetch && (queue.hasMore || channelListState.hasMore)) {
+                    saveChannelImportQueue(queue);
+                    updateChannelImportProgress();
+                    if (queue.restSeconds > 0) {
+                        let rested = await waitChannelImportRest(queue.restSeconds);
+                        if (!rested) {
+                            saveChannelImportQueue(queue);
+                            break;
+                        }
+                    }
+                    queue = readSavedChannelImportQueue();
+                    continue;
+                }
+
                 localStorage.removeItem(channelImportQueueKey);
                 updateChannelImportProgress();
                 setChannelListStatus(`Import finished. ${queue.done}/${queue.total} row(s), ${queue.files} file(s) stored.`, 'success');
@@ -1336,6 +1682,7 @@ async function runSavedChannelImportQueue() {
                 break;
             }
 
+            rememberQueueFetchPosition(queue);
             saveChannelImportQueue(queue);
             updateChannelImportProgress();
 
@@ -1438,6 +1785,9 @@ async function importChannelQueueChunk(queue, chunk) {
                     result.stopped = true;
                 } else if (data.status === 'cooldown') {
                     result.cooldownSeconds = Math.max(result.cooldownSeconds, Number(data.cooldown_seconds || 0));
+                } else if (data.status === 'rate_limited') {
+                    result.stopped = true;
+                    result.cooldownSeconds = Math.max(result.cooldownSeconds, Number(data.retry_after || data.cooldown_seconds || 0));
                 }
                 channelImportRun.done = queue.done + result.done;
                 channelImportRun.files = queue.files + result.files;
@@ -1458,6 +1808,9 @@ async function importChannelQueueChunk(queue, chunk) {
                 result.stopped = true;
             } else if (data.status === 'cooldown') {
                 result.cooldownSeconds = Math.max(result.cooldownSeconds, Number(data.cooldown_seconds || 0));
+            } else if (data.status === 'rate_limited') {
+                result.stopped = true;
+                result.cooldownSeconds = Math.max(result.cooldownSeconds, Number(data.retry_after || data.cooldown_seconds || 0));
             }
             channelImportRun.done = queue.done + result.done;
             channelImportRun.files = queue.files + result.files;
@@ -2042,6 +2395,9 @@ function appendLog(data) {
             break;
         case 'cooldown':
             addLog(`${title}: ${data.detail || 'cooling down before next batch'}`, 'info');
+            break;
+        case 'rate_limited':
+            addLog(`${title}: rate limited, retrying after ${data.retry_after || data.cooldown_seconds || 0}s`, 'info');
             break;
         case 'title_complete':
             addLog(`${title}: done (${data.stored_count || 0} stored now, ${data.stored_total || 0} saved)`, 'info');

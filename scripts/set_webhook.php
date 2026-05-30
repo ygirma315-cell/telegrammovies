@@ -80,6 +80,7 @@ $commands = [
     ['command' => 'start', 'description' => 'Start the bot'],
     ['command' => 'search', 'description' => 'Search for a movie'],
     ['command' => 'movie', 'description' => 'Search for a movie'],
+    ['command' => 'app', 'description' => 'Open the movie hub'],
 ];
 
 $commandContext = stream_context_create([

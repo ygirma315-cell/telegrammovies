@@ -96,6 +96,26 @@ function botMainChannelUsername(): string {
     return '@' . ltrim($channel, '@');
 }
 
+function botWebAppUrl(): string {
+    return botEnv('WEB_APP_URL', 'https://ygirma315-cell.github.io/telegrammovies/');
+}
+
+function botWebAppKeyboard(): array {
+    $url = botWebAppUrl();
+    if ($url === '' || !str_starts_with($url, 'https://')) {
+        return [];
+    }
+
+    return [
+        'inline_keyboard' => [[
+            [
+                'text' => 'Open Movie Hub',
+                'web_app' => ['url' => $url],
+            ],
+        ]],
+    ];
+}
+
 function botWithMainChannel(string $text): string {
     $channel = botMainChannelUsername();
     if ($channel === '') {
@@ -103,6 +123,47 @@ function botWithMainChannel(string $text): string {
     }
 
     return rtrim($text) . "\n\nMain channel: " . $channel;
+}
+
+function botSendStartHelp(string|int $chatId): void {
+    $params = [
+        'chat_id' => $chatId,
+        'text' => botWithMainChannel('Send any movie name to search, or use /search movie name.'),
+    ];
+    $keyboard = botWebAppKeyboard();
+    if ($keyboard !== []) {
+        $params['reply_markup'] = $keyboard;
+    }
+
+    botApi('sendMessage', $params);
+}
+
+function botDecodeBase64Url(string $value): string {
+    $value = strtr($value, '-_', '+/');
+    $padding = strlen($value) % 4;
+    if ($padding > 0) {
+        $value .= str_repeat('=', 4 - $padding);
+    }
+
+    $decoded = base64_decode($value, true);
+    return is_string($decoded) ? trim($decoded) : '';
+}
+
+function botHandleWebAppData(string|int $chatId, string $rawData): void {
+    $payload = json_decode($rawData, true);
+    if (!is_array($payload)) {
+        botSendStartHelp($chatId);
+        return;
+    }
+
+    $type = (string) ($payload['type'] ?? '');
+    $query = trim((string) ($payload['query'] ?? ''));
+    if ($type === 'search' && $query !== '') {
+        botSendSearchResults($chatId, $query);
+        return;
+    }
+
+    botSendStartHelp($chatId);
 }
 
 function botReadCatalog(): array {
@@ -281,8 +342,18 @@ function botHandleWebhook(array $update): array {
 
     $message = (array) ($update['message'] ?? []);
     $chatId = $message['chat']['id'] ?? null;
+    if ($chatId === null) {
+        return ['ok' => true];
+    }
+
+    $webAppData = trim((string) ($message['web_app_data']['data'] ?? ''));
+    if ($webAppData !== '') {
+        botHandleWebAppData($chatId, $webAppData);
+        return ['ok' => true];
+    }
+
     $text = trim((string) ($message['text'] ?? ''));
-    if ($chatId === null || $text === '') {
+    if ($text === '') {
         return ['ok' => true];
     }
 
@@ -290,13 +361,22 @@ function botHandleWebhook(array $update): array {
         $payload = trim((string) ($matches[1] ?? ''));
         if (str_starts_with($payload, 'movie_')) {
             botDeliverMovieToChat($chatId, substr($payload, 6));
+        } elseif (str_starts_with($payload, 'q_')) {
+            $query = botDecodeBase64Url(substr($payload, 2));
+            if ($query === '') {
+                botSendStartHelp($chatId);
+            } else {
+                botSendSearchResults($chatId, $query);
+            }
         } else {
-            botApi('sendMessage', [
-                'chat_id' => $chatId,
-                'text' => botWithMainChannel('Send any movie name to search, or use /search movie name.'),
-            ]);
+            botSendStartHelp($chatId);
         }
 
+        return ['ok' => true];
+    }
+
+    if (preg_match('/^\/app(?:@\w+)?$/i', $text)) {
+        botSendStartHelp($chatId);
         return ['ok' => true];
     }
 

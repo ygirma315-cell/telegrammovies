@@ -40,8 +40,16 @@ function routerBool(string $key, bool $default = false): bool {
     return filter_var($value, FILTER_VALIDATE_BOOLEAN);
 }
 
+function routerCorsHeaders(): void {
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Telegram-Bot-Api-Secret-Token');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+}
+
 function routerJson(array $data, int $status = 200): void {
     http_response_code($status);
+    routerCorsHeaders();
     header('Content-Type: application/json');
     echo json_encode($data);
 }
@@ -66,6 +74,11 @@ $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/
 $method = (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET');
 $publicBotOnly = routerBool('PUBLIC_BOT_ONLY', true);
 $adminPassword = (string) (getenv('ADMIN_PASSWORD') ?: '');
+
+if ($method === 'OPTIONS') {
+    routerJson(['ok' => true]);
+    return true;
+}
 
 if ($path === '/health' || ($publicBotOnly && $path === '/')) {
     routerJson(['ok' => true, 'service' => 'telegrammovies-bot']);

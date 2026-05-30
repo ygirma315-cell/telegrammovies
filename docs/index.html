@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#07121f">
+    <title>Movies Store HD Bot</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="preload" href="assets/bot-profile-picture.jpg" as="image">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <main class="app-shell">
+        <section class="hero">
+            <div class="hero-media" aria-hidden="true">
+                <img src="assets/bot-profile-picture.jpg" alt="">
+            </div>
+            <div class="hero-copy">
+                <p class="eyebrow">Telegram movie delivery</p>
+                <h1><span>Movies</span><span>Store HD</span><span>Bot</span></h1>
+                <p class="lead">Search a title, tap a result, and get available files straight in Telegram.</p>
+                <div class="hero-actions">
+                    <a class="button primary" href="https://t.me/moviesstorehdbot" target="_blank" rel="noreferrer">Open Bot</a>
+                    <a class="button ghost" href="https://t.me/movieshddddd2" target="_blank" rel="noreferrer">Main Channel</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="search-panel" aria-label="Movie search">
+            <div>
+                <span class="label">Mini search</span>
+                <h2>Ask the bot from here</h2>
+            </div>
+            <form id="searchForm" class="search-row">
+                <input id="movieQuery" type="search" autocomplete="off" placeholder="Movie title">
+                <button type="submit">Search</button>
+            </form>
+            <p id="searchHint" class="hint">Inside Telegram this sends the search to the bot. Outside Telegram it opens the bot chat.</p>
+        </section>
+
+        <section class="status-grid" aria-label="Service status">
+            <article class="status-card">
+                <span class="label">Render wake</span>
+                <strong id="wakeStatus">Checking...</strong>
+                <p id="wakeDetail">Sending a light health ping.</p>
+            </article>
+            <article class="status-card accent">
+                <span class="label">Page ping</span>
+                <strong>Every 4 min</strong>
+                <p>This page pings the server while it is open.</p>
+            </article>
+            <article class="status-card warm">
+                <span class="label">Cloud wake</span>
+                <strong>Every 10 min</strong>
+                <p>GitHub pings Render even when your PC is off.</p>
+            </article>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

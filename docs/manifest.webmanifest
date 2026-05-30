@@ -1,0 +1,18 @@
+{
+    "name": "Movies Store HD Bot",
+    "short_name": "Movie Bot",
+    "description": "Telegram mini site for Movies Store HD Bot.",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#07121f",
+    "theme_color": "#07121f",
+    "icons": [
+        {
+            "src": "assets/bot-profile-picture.jpg",
+            "sizes": "512x512",
+            "type": "image/jpeg",
+            "purpose": "any"
+        }
+    ]
+}
