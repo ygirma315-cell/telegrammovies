@@ -258,7 +258,7 @@ function botDeliverMovieToChat(string|int $chatId, string $movieId): void {
     if ($sent === 0) {
         botApi('sendMessage', [
             'chat_id' => $chatId,
-            'text' => botWithMainChannel("$title is listed, but no copyable file reference was saved. Rebuild the catalog locally and redeploy."),
+            'text' => botWithMainChannel("$title is listed, but no copyable file reference was saved. Rebuild the catalog locally so the bot has a file reference."),
         ]);
     }
 }

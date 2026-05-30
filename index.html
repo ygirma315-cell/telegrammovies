@@ -218,18 +218,34 @@
             <div class="workspace-grid">
                 <div class="tool-panel">
                     <label class="field-label" for="channelListSource">Channel or group</label>
-                    <input type="text" id="channelListSource" placeholder="Channel or group (e.g., @Films_433)">
-                    <label class="field-label" for="channelListBot">Preferred bot</label>
-                    <input type="text" id="channelListBot" placeholder="Preferred bot (e.g., @Filestore23bot)" value="@Filestore23bot">
-                    <label class="field-label" for="channelListLimit">Batch size</label>
-                    <input type="number" id="channelListLimit" min="5" max="80" value="30" title="Batch size">
+                    <input type="text" id="channelListSource" placeholder="Channel, group, or private invite link">
+                    <label class="field-label" for="channelListBot">Preferred bot (optional)</label>
+                    <input type="text" id="channelListBot" placeholder="Empty = direct files">
+                    <label class="field-label" for="channelListLimit">File count (optional)</label>
+                    <input type="number" id="channelListLimit" min="1" placeholder="Empty = every file" title="File count">
+                    <div class="index-controls">
+                        <div>
+                            <label class="field-label" for="channelBatchSize">Batch size</label>
+                            <input type="number" id="channelBatchSize" min="1" max="80" value="20" title="Fetch and import batch size">
+                        </div>
+                        <div>
+                            <label class="field-label" for="channelBatchRest">Rest seconds</label>
+                            <input type="number" id="channelBatchRest" min="0" max="600" value="15" title="Rest between import batches">
+                        </div>
+                    </div>
                     <div class="list-actions">
-                        <button id="channelFetchButton" onclick="fetchChannelLists(true)">Fetch</button>
+                        <button id="channelFetchButton" onclick="fetchChannelLists(true)">Fetch Batch</button>
                         <button id="channelNextButton" class="secondary" onclick="fetchChannelLists(false)" disabled>Next Batch</button>
                         <button id="channelSelectAllButton" class="secondary" onclick="toggleListSelection(true)" disabled>Select All</button>
                         <button id="channelClearSelectedButton" class="danger" onclick="toggleListSelection(false)" disabled>Clear</button>
                     </div>
                     <button id="channelImportSelectedButton" class="primary-action" onclick="importSelectedLists()" disabled>Import Selected</button>
+                    <div class="list-actions">
+                        <button id="channelPauseButton" class="secondary" onclick="pauseChannelImport()" disabled>Pause</button>
+                        <button id="channelContinueButton" onclick="continueChannelImport()" disabled>Continue</button>
+                        <button id="channelStopButton" class="danger" onclick="stopChannelImport()" disabled>Stop</button>
+                        <button id="channelClearQueueButton" class="danger" onclick="clearSavedChannelImportQueue(true)" disabled>Clear Queue</button>
+                    </div>
                     <div class="status-strip">
                         <div id="channelListStatus" class="manage-status">No batch loaded.</div>
                         <div id="channelSelectionCount" class="selection-count">0 selected</div>
@@ -242,7 +258,7 @@
                         <span id="channelBatchLabel" class="batch-pill">Batch 0</span>
                     </div>
                     <div id="channelListResults" class="list-results">
-                        <div class="empty-state">Fetch a channel batch to choose list rows.</div>
+                        <div class="empty-state">Fetch a channel batch to choose file rows.</div>
                     </div>
                 </div>
             </div>
@@ -309,7 +325,7 @@
                     <div class="index-controls">
                         <div>
                             <label class="field-label" for="indexBatchSize">Movies per batch</label>
-                            <input type="number" id="indexBatchSize" min="1" max="30" value="10">
+                            <input type="number" id="indexBatchSize" min="1" max="30" value="20">
                         </div>
                         <button class="secondary" type="button" onclick="loadIndexPreview()">Preview</button>
                     </div>
@@ -439,7 +455,7 @@
                 <button id="modeSaved" type="button" onclick="setSourceMode('saved')">Saved</button>
                 <button id="modeGlobal" type="button" onclick="setSourceMode('global')">Global</button>
             </div>
-            <textarea id="targetUsername" rows="2" placeholder="Allowed sources: @bot, @channel, https://t.me/channel, or all saved"></textarea>
+            <textarea id="targetUsername" rows="2" placeholder="Allowed sources: @bot, @channel, https://t.me/+invite, or all saved"></textarea>
             <div class="source-actions">
                 <button class="secondary" type="button" onclick="discoverSources()">Discover</button>
                 <button class="secondary" type="button" onclick="useAllSavedSources()">Use Saved</button>
@@ -453,10 +469,10 @@
         </div>
         <textarea id="movieTitles" rows="5" placeholder="Enter movie titles (one per line)"></textarea>
         <div class="source-panel">
-            <label class="field-label" for="importLimit">Channel scan limit</label>
-            <input type="number" id="importLimit" min="10" max="500" value="120" title="Channel scan limit">
-            <label class="field-label" for="preferredBot">Preferred bot</label>
-            <input type="text" id="preferredBot" value="@Filestore23bot" placeholder="Preferred bot">
+            <label class="field-label" for="importLimit">File count (optional)</label>
+            <input type="number" id="importLimit" min="1" placeholder="Empty = all files" title="File count">
+            <label class="field-label" for="preferredBot">Preferred bot (optional)</label>
+            <input type="text" id="preferredBot" placeholder="Empty = direct files">
             <label class="field-label" for="importMode">Import mode</label>
             <select id="importMode" title="Import mode">
                 <option value="direct" selected>Direct channel files</option>
@@ -510,11 +526,16 @@ let channelListState = {
     busy: false
 };
 let channelImportRun = {total: 0, done: 0, files: 0};
+let channelImportController = null;
+let channelImportRunning = false;
+let channelImportPaused = false;
+let channelImportStopped = false;
 let indexController = null;
 let indexRun = {total: 0, posted: 0, movies: 0, current: 'Idle'};
 const rememberKey = 'telegramMovieScraperRememberLogin';
 const targetHistoryKey = 'telegramMovieScraperTargetHistory';
 const importedListKey = 'telegramMovieScraperImportedListKeysV2';
+const channelImportQueueKey = 'telegramMovieScraperChannelImportQueueV1';
 
 window.onload = async () => {
     let remember = localStorage.getItem(rememberKey);
@@ -644,6 +665,10 @@ function openTool(tool) {
             let saved = readTargetHistory()[0] || '';
             if (saved) document.getElementById('channelListSource').value = saved;
         }
+        let savedQueue = readSavedChannelImportQueue();
+        if (savedQueue && !channelImportRunning) {
+            setChannelListStatus(`Saved queue ready: ${savedQueue.remaining.length} row(s) left. Press Continue.`, 'info');
+        }
         updateChannelControls();
     }
     if (tool === 'status') {
@@ -688,15 +713,27 @@ function updateSourceModeButtons() {
 function normalizeTargetUsername(username) {
     let target = String(username || '').trim();
     if (!target) return '';
+    target = target.replace(/\s+/g, '');
+    let tgInvite = target.match(/^tg:\/\/join\?invite=([^&#]+)/i);
+    if (tgInvite) return `https://t.me/+${tgInvite[1]}`;
+    let webInvite = target.match(/^(?:https?:\/\/)?(?:www\.)?(?:t|telegram)\.me\/(?:joinchat\/|\+)([^/?#]+)/i);
+    if (webInvite) return `https://t.me/+${webInvite[1]}`;
+    if (/^\+[A-Za-z0-9_-]+$/.test(target)) return `https://t.me/${target}`;
     target = target.replace(/^https?:\/\/(?:www\.)?(?:t|telegram)\.me\//i, '@');
     target = target.replace(/^(?:t|telegram)\.me\//i, '@');
     target = target.split(/[?#]/)[0];
     target = target.replace(/\/.*$/, '');
-    target = target.replace(/\s+/g, '');
     if (target && !target.startsWith('@') && !/^-?\d+$/.test(target)) {
         target = '@' + target;
     }
     return target;
+}
+
+function optionalPositiveInt(value) {
+    let raw = String(value || '').trim();
+    if (!raw) return 0;
+    let number = Number(raw);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
 }
 
 function parseTargetUsernames(value) {
@@ -855,6 +892,85 @@ function saveImportedListKeys(keys) {
     localStorage.setItem(importedListKey, JSON.stringify([...merged].slice(-1000)));
 }
 
+function channelBatchSize() {
+    let value = optionalPositiveInt(document.getElementById('channelBatchSize')?.value);
+    return Math.max(1, Math.min(80, value || 20));
+}
+
+function channelRestSeconds() {
+    let raw = String(document.getElementById('channelBatchRest')?.value || '').trim();
+    if (!raw) return 15;
+    let value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? Math.max(0, Math.min(600, Math.floor(value))) : 15;
+}
+
+function readSavedChannelImportQueue() {
+    try {
+        let queue = JSON.parse(localStorage.getItem(channelImportQueueKey) || 'null');
+        if (!queue || !Array.isArray(queue.remaining)) return null;
+        queue.remaining = queue.remaining.filter(item => item && item.key && item.target && item.message_id);
+        if (!queue.remaining.length) return null;
+
+        return {
+            target: queue.target || '',
+            preferredBot: queue.preferredBot || '',
+            fileLimit: Math.max(0, Number(queue.fileLimit || 0)),
+            batchSize: Math.max(1, Math.min(80, Number(queue.batchSize || 20))),
+            restSeconds: Math.max(0, Math.min(600, Number(queue.restSeconds ?? 15))),
+            remaining: queue.remaining,
+            total: Math.max(queue.remaining.length, Number(queue.total || queue.remaining.length)),
+            done: Math.max(0, Number(queue.done || 0)),
+            files: Math.max(0, Number(queue.files || 0)),
+            importedKeys: Array.isArray(queue.importedKeys) ? queue.importedKeys.filter(Boolean) : [],
+            updatedAt: Number(queue.updatedAt || Date.now())
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveChannelImportQueue(queue) {
+    if (!queue || !Array.isArray(queue.remaining) || !queue.remaining.length) {
+        localStorage.removeItem(channelImportQueueKey);
+        return;
+    }
+
+    queue.updatedAt = Date.now();
+    localStorage.setItem(channelImportQueueKey, JSON.stringify(queue));
+}
+
+function clearSavedChannelImportQueue(showStatus = false) {
+    localStorage.removeItem(channelImportQueueKey);
+    channelImportRun = {total: 0, done: 0, files: 0};
+    if (showStatus) {
+        setChannelListStatus('Saved import queue cleared.', 'info');
+        addLog('Saved channel import queue cleared.', 'info');
+    }
+    updateChannelControls();
+}
+
+function removeImportedChannelRows(keys) {
+    let keySet = new Set(keys.filter(Boolean));
+    if (!keySet.size) return;
+    saveImportedListKeys([...keySet]);
+    channelListState.items = channelListState.items.filter(item => !keySet.has(item.key));
+    renderChannelListResults();
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitChannelImportRest(seconds) {
+    let total = Math.max(0, seconds);
+    for (let left = total; left > 0; left--) {
+        if (channelImportPaused || channelImportStopped) return false;
+        setChannelListStatus(`Resting ${left}s before the next import batch.`, 'info');
+        await delay(1000);
+    }
+    return !(channelImportPaused || channelImportStopped);
+}
+
 function setChannelListStatus(message, className = '') {
     let status = document.getElementById('channelListStatus');
     if (!status) return;
@@ -868,17 +984,26 @@ function updateChannelSelectionCount() {
     let count = document.getElementById('channelSelectionCount');
     if (count) count.textContent = `${selected}/${total} selected`;
     let importButton = document.getElementById('channelImportSelectedButton');
-    if (importButton) importButton.disabled = channelListState.busy || selected === 0;
+    if (importButton) importButton.disabled = channelListState.busy || channelImportRunning || selected === 0;
+    return {selected, total};
 }
 
 function updateChannelControls() {
     let hasItems = (channelListState.items || []).length > 0;
+    let selection = updateChannelSelectionCount();
+    let savedQueue = readSavedChannelImportQueue();
+    let hasSavedQueue = !!savedQueue;
+    let busy = channelListState.busy || channelImportRunning;
     let controls = [
-        ['channelFetchButton', channelListState.busy],
-        ['channelNextButton', channelListState.busy || !channelListState.hasMore],
-        ['channelSelectAllButton', channelListState.busy || !hasItems],
-        ['channelClearSelectedButton', channelListState.busy || !hasItems],
-        ['channelImportSelectedButton', channelListState.busy || !hasItems]
+        ['channelFetchButton', busy],
+        ['channelNextButton', busy || !channelListState.hasMore],
+        ['channelSelectAllButton', busy || !hasItems],
+        ['channelClearSelectedButton', busy || !hasItems],
+        ['channelImportSelectedButton', busy || selection.selected === 0],
+        ['channelPauseButton', !channelImportRunning || channelImportPaused],
+        ['channelContinueButton', channelImportRunning || !hasSavedQueue],
+        ['channelStopButton', !channelImportRunning && !hasSavedQueue],
+        ['channelClearQueueButton', channelImportRunning || !hasSavedQueue]
     ];
     for (let [id, disabled] of controls) {
         let button = document.getElementById(id);
@@ -886,15 +1011,20 @@ function updateChannelControls() {
     }
 
     let label = document.getElementById('channelBatchLabel');
-    if (label) label.textContent = `Batch ${channelListState.batch || 0}`;
-    updateChannelSelectionCount();
+    if (label) {
+        label.textContent = channelListState.batch
+            ? `${channelListState.batch} batch${channelListState.batch === 1 ? '' : 'es'} fetched`
+            : 'Batch 0';
+    }
 }
 
 function renderChannelListResults() {
     let container = document.getElementById('channelListResults');
     let items = channelListState.items || [];
     if (!items.length) {
-        container.innerHTML = '<div class="empty-state">No selectable list rows in this batch.</div>';
+        container.innerHTML = channelListState.batch
+            ? '<div class="empty-state">No selectable file rows in fetched history.</div>'
+            : '<div class="empty-state">Fetch a channel batch to choose file rows.</div>';
         updateChannelControls();
         return;
     }
@@ -904,7 +1034,7 @@ function renderChannelListResults() {
             <input type="checkbox" class="channel-list-check" data-index="${index}" onchange="updateChannelSelectionCount()" checked>
             <span>
                 <span class="list-title">${escapeHtml(item.title || item.label || 'Untitled')}</span>
-                <span class="list-meta">${escapeHtml(item.kind || 'item')} | ${escapeHtml(item.label || '')}${item.bot ? ' | ' + escapeHtml(item.bot) : ''} | msg ${escapeHtml(item.message_id)}</span>
+                <span class="list-meta">batch ${escapeHtml(item.batch || 1)} | ${escapeHtml(item.kind || 'item')} | ${escapeHtml(item.label || '')}${item.bot ? ' | ' + escapeHtml(item.bot) : ''} | msg ${escapeHtml(item.message_id)}</span>
                 <span class="list-meta">${escapeHtml(item.snippet || '')}</span>
             </span>
         </label>
@@ -936,23 +1066,39 @@ function resolveChannelListTarget() {
     return normalizeTargetUsername(raw);
 }
 
-async function fetchChannelLists(reset = false) {
-    if (!channelListState.target) reset = true;
-
+async function fetchChannelLists(reset = true) {
     let target = resolveChannelListTarget();
-    let preferredBot = normalizeTargetUsername(document.getElementById('channelListBot').value || '@Filestore23bot');
-    let limit = Math.max(5, Math.min(80, Number(document.getElementById('channelListLimit').value || 30)));
+    let preferredBot = normalizeTargetUsername(document.getElementById('channelListBot').value);
+    let fileLimit = optionalPositiveInt(document.getElementById('channelListLimit').value);
+    let pageSize = channelBatchSize();
 
     if (!target) {
         setChannelListStatus('Add a channel, or save one source first.', 'error');
         return;
     }
 
-    if (reset || channelListState.target.toLowerCase() !== target.toLowerCase()) {
+    if (!reset && channelListState.target && channelListState.target !== target) {
+        reset = true;
+    }
+
+    if (reset) {
         channelListState.offsetId = 0;
         channelListState.items = [];
         channelListState.target = target;
         channelListState.batch = 0;
+        channelListState.hasMore = false;
+    }
+
+    if (!reset && channelListState.batch && !channelListState.hasMore) {
+        setChannelListStatus('No more channel history batches were reported.', 'info');
+        updateChannelControls();
+        return;
+    }
+
+    if (fileLimit && channelListState.items.length >= fileLimit) {
+        setChannelListStatus(`Already showing ${fileLimit} file row(s). Clear or raise file count to fetch more.`, 'info');
+        updateChannelControls();
+        return;
     }
 
     setChannelListStatus(reset ? 'Fetching first batch...' : 'Fetching next batch...');
@@ -963,12 +1109,17 @@ async function fetchChannelLists(reset = false) {
     saveTargetUsernames([target]);
 
     try {
+        let offsetId = reset ? 0 : Number(channelListState.offsetId || 0);
+        let seenKeys = new Set([
+            ...readImportedListKeys(),
+            ...(channelListState.items || []).map(item => item.key).filter(Boolean)
+        ]);
         let data = await apiAction('preview_channel_lists', {
             username: target,
-            offset_id: channelListState.offsetId,
-            limit,
+            offset_id: offsetId,
+            limit: pageSize,
             preferred_bot: preferredBot,
-            skip_keys: JSON.stringify(readImportedListKeys())
+            skip_keys: JSON.stringify([...seenKeys])
         });
 
         if (!data.success) {
@@ -976,12 +1127,30 @@ async function fetchChannelLists(reset = false) {
             return;
         }
 
-        channelListState.items = data.items || [];
+        let batchNumber = channelListState.batch + 1;
+        let added = 0;
+        let stopAtLimit = false;
+        let batchItems = (data.items || [])
+            .filter(item => item && item.key && !seenKeys.has(item.key))
+            .map(item => ({...item, batch: batchNumber}));
+
+        for (let item of batchItems) {
+            seenKeys.add(item.key);
+            channelListState.items.push(item);
+            added++;
+            if (fileLimit && channelListState.items.length >= fileLimit) {
+                stopAtLimit = true;
+                break;
+            }
+        }
+
+        channelListState.batch = batchNumber;
         channelListState.offsetId = Number(data.next_offset_id || 0);
-        channelListState.hasMore = !!data.has_more;
-        channelListState.batch += 1;
+        channelListState.hasMore = !!data.has_more && !stopAtLimit && channelListState.offsetId > 0 && channelListState.offsetId !== offsetId;
         renderChannelListResults();
-        setChannelListStatus(`${channelListState.items.length} selectable row(s). ${channelListState.hasMore ? 'Next batch available.' : 'End of fetched history.'}`, channelListState.items.length ? 'success' : 'info');
+        let nextText = channelListState.hasMore ? 'Press Next Batch for more.' : 'Reached the end of fetched history.';
+        if (stopAtLimit) nextText = `Stopped at ${fileLimit} file row(s).`;
+        setChannelListStatus(`Batch ${batchNumber}: ${added} new row(s), ${channelListState.items.length} total. ${nextText}`, added ? 'success' : 'info');
     } catch (error) {
         setChannelListStatus(error.message || 'Batch fetch failed', 'error');
     } finally {
@@ -1015,17 +1184,16 @@ function handleChannelImportEvent(data) {
     if (!data || data.error) return;
 
     if (data.status === 'source_import') {
-        updateChannelImportProgress();
         setChannelListStatus(`${data.detail || 'Starting selected batch'} | ${channelImportRun.done}/${channelImportRun.total} finished`, 'info');
     } else if (data.status === 'stored') {
-        channelImportRun.files = Math.max(channelImportRun.files, Number(data.stored_count || channelImportRun.files + 1));
         updateChannelImportProgress();
     } else if (data.status === 'source_complete') {
-        channelImportRun.done++;
         updateChannelImportProgress();
+    } else if (data.status === 'cooldown') {
+        setChannelListStatus(data.detail || 'Cooling down before the next import batch.', 'info');
+    } else if (data.status === 'stopped') {
+        setChannelListStatus('Import stopped. Press Continue to resume the saved queue.', 'info');
     } else if (data.status === 'complete') {
-        channelImportRun.files = Math.max(channelImportRun.files, Number(data.stored_count || channelImportRun.files));
-        channelImportRun.done = Math.min(channelImportRun.total, Math.max(channelImportRun.done, channelImportRun.total));
         updateChannelImportProgress();
     }
 }
@@ -1037,18 +1205,200 @@ async function importSelectedLists() {
         return;
     }
 
-    channelListState.busy = true;
-    channelImportRun = {total: selected.length, done: 0, files: 0};
+    let queue = {
+        target: resolveChannelListTarget(),
+        preferredBot: normalizeTargetUsername(document.getElementById('channelListBot').value),
+        fileLimit: optionalPositiveInt(document.getElementById('channelListLimit').value),
+        batchSize: channelBatchSize(),
+        restSeconds: channelRestSeconds(),
+        remaining: selected,
+        total: selected.length,
+        done: 0,
+        files: 0,
+        importedKeys: [],
+        updatedAt: Date.now()
+    };
+
+    saveChannelImportQueue(queue);
+    channelImportRun = {total: queue.total, done: 0, files: 0};
+    channelImportPaused = false;
+    channelImportStopped = false;
+    addLog(`Queued ${selected.length} selected row(s). Importing ${queue.batchSize} at a time.`, 'info');
+    await runSavedChannelImportQueue();
+}
+
+async function continueChannelImport() {
+    let queue = readSavedChannelImportQueue();
+    if (!queue) {
+        setChannelListStatus('No saved import queue to continue.', 'info');
+        updateChannelControls();
+        return;
+    }
+
+    document.getElementById('channelListSource').value = queue.target || document.getElementById('channelListSource').value;
+    document.getElementById('channelListBot').value = queue.preferredBot || '';
+    document.getElementById('channelListLimit').value = queue.fileLimit ? String(queue.fileLimit) : '';
+    document.getElementById('channelBatchSize').value = String(queue.batchSize || 20);
+    document.getElementById('channelBatchRest').value = String(queue.restSeconds ?? 15);
+    channelImportRun = {total: queue.total, done: queue.done, files: queue.files};
+    channelImportPaused = false;
+    channelImportStopped = false;
+    addLog(`Continuing saved queue with ${queue.remaining.length} row(s) left.`, 'info');
+    await runSavedChannelImportQueue();
+}
+
+function pauseChannelImport() {
+    if (!channelImportRunning) return;
+    channelImportPaused = true;
+    setChannelListStatus('Pause requested. Current import batch will finish first.', 'info');
+    addLog('Pause requested for channel import.', 'info');
     updateChannelControls();
-    updateChannelImportProgress();
-    addLog(`Importing ${selected.length} selected channel row(s).`, 'info');
+}
+
+async function stopChannelImport() {
+    channelImportStopped = true;
+    channelImportPaused = false;
+    let controller = channelImportController;
+    if (controller) {
+        controller.abort();
+        channelImportController = null;
+    }
+    if (controller && scrapeController === controller) {
+        scrapeController = null;
+    }
+
+    try {
+        await fetch('server.php?action=stop_scrape');
+    } catch (error) {
+        // Best effort. The browser abort already closes the current stream.
+    }
+
+    setChannelListStatus('Stopped. Press Continue to resume the saved queue.', 'info');
+    addLog('Channel import stopped. Saved queue kept for Continue.', 'info');
+    updateChannelControls();
+}
+
+async function runSavedChannelImportQueue() {
+    if (channelImportRunning) return;
+
+    let queue = readSavedChannelImportQueue();
+    if (!queue) {
+        setChannelListStatus('No saved import queue to run.', 'info');
+        updateChannelControls();
+        return;
+    }
+
+    channelImportRunning = true;
+    channelListState.busy = true;
+    updateChannelControls();
+
+    try {
+        while (queue && queue.remaining.length) {
+            if (channelImportStopped || channelImportPaused) break;
+            if (queue.fileLimit > 0 && queue.files >= queue.fileLimit) {
+                localStorage.removeItem(channelImportQueueKey);
+                setChannelListStatus(`File count reached (${queue.files}/${queue.fileLimit}).`, 'success');
+                break;
+            }
+
+            let chunk = queue.remaining.slice(0, queue.batchSize || 20);
+            channelImportRun = {total: queue.total, done: queue.done, files: queue.files};
+            updateChannelImportProgress();
+            addLog(`Import batch: ${chunk.length} row(s), ${queue.remaining.length} left before this batch.`, 'info');
+
+            let result = await importChannelQueueChunk(queue, chunk);
+            let finished = Math.min(result.done, chunk.length);
+            let importedKeys = chunk.slice(0, finished).map(item => item.key).filter(Boolean);
+
+            queue.done += finished;
+            queue.files += result.files;
+            queue.importedKeys = [...new Set([...(queue.importedKeys || []), ...importedKeys])];
+            queue.remaining = queue.remaining.slice(finished);
+            channelImportRun = {total: queue.total, done: queue.done, files: queue.files};
+
+            if (importedKeys.length) {
+                removeImportedChannelRows(importedKeys);
+            }
+
+            if (queue.fileLimit > 0 && queue.files >= queue.fileLimit) {
+                queue.remaining = [];
+                localStorage.removeItem(channelImportQueueKey);
+                updateChannelImportProgress();
+                setChannelListStatus(`File count reached (${queue.files}/${queue.fileLimit}).`, 'success');
+                break;
+            }
+
+            if (!queue.remaining.length) {
+                localStorage.removeItem(channelImportQueueKey);
+                updateChannelImportProgress();
+                setChannelListStatus(`Import finished. ${queue.done}/${queue.total} row(s), ${queue.files} file(s) stored.`, 'success');
+                addLog('Selected channel import finished.', 'info');
+                break;
+            }
+
+            saveChannelImportQueue(queue);
+            updateChannelImportProgress();
+
+            if (result.fatal) {
+                setChannelListStatus('Import failed. Saved queue kept for Continue.', 'error');
+                break;
+            }
+
+            if (result.stopped || channelImportStopped) {
+                if (result.cooldownSeconds > 0 && !channelImportStopped) {
+                    let rested = await waitChannelImportRest(result.cooldownSeconds);
+                    if (rested) {
+                        queue = readSavedChannelImportQueue();
+                        continue;
+                    }
+                }
+                setChannelListStatus('Import stopped. Press Continue to resume the saved queue.', 'info');
+                break;
+            }
+
+            if (channelImportPaused) {
+                setChannelListStatus('Paused. Press Continue to resume the saved queue.', 'info');
+                break;
+            }
+
+            if (finished === 0) {
+                setChannelListStatus('No row finished in this import batch, so the queue was paused to avoid looping.', 'error');
+                break;
+            }
+
+            if (queue.restSeconds > 0 && queue.remaining.length) {
+                let rested = await waitChannelImportRest(queue.restSeconds);
+                if (!rested) {
+                    saveChannelImportQueue(queue);
+                    break;
+                }
+            }
+
+            queue = readSavedChannelImportQueue();
+        }
+    } finally {
+        let controller = channelImportController;
+        channelImportRunning = false;
+        channelListState.busy = false;
+        channelImportController = null;
+        if (controller && scrapeController === controller) scrapeController = null;
+        updateChannelControls();
+    }
+}
+
+async function importChannelQueueChunk(queue, chunk) {
+    let result = {done: 0, files: 0, stopped: false, fatal: false, cooldownSeconds: 0};
     let controller = new AbortController();
+    channelImportController = controller;
     scrapeController = controller;
 
     try {
         let body = new URLSearchParams();
-        body.set('items', JSON.stringify(selected));
-        body.set('preferred_bot', normalizeTargetUsername(document.getElementById('channelListBot').value || '@Filestore23bot'));
+        body.set('items', JSON.stringify(chunk));
+        body.set('preferred_bot', queue.preferredBot || '');
+        body.set('file_limit', String(queue.fileLimit > 0 ? Math.max(0, queue.fileLimit - queue.files) : 0));
+        body.set('chunk_size', String(queue.batchSize || 20));
+        body.set('cooldown_seconds', '0');
 
         let res = await fetch('server.php?action=import_selected_lists', {
             method: 'POST',
@@ -1057,34 +1407,80 @@ async function importSelectedLists() {
             signal: controller.signal
         });
 
+        if (!res.body) {
+            let data = await res.json();
+            handleChannelImportEvent(data);
+            result.fatal = !!data.error;
+            return result;
+        }
+
         let reader = res.body.getReader();
         let decoder = new TextDecoder();
         let buffer = '';
+
         while (true) {
-            let {done, value} = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, {stream: true});
+            let read = await reader.read();
+            if (read.done) break;
+            buffer += decoder.decode(read.value, {stream: true});
             let lines = buffer.split('\n');
             buffer = lines.pop();
             for (let line of lines) {
                 if (!line.trim()) continue;
                 let data = JSON.parse(line);
                 handleChannelImportEvent(data);
+                if (data.status === 'source_complete') {
+                    result.done++;
+                } else if (data.status === 'stored') {
+                    result.files = Math.max(result.files, Number(data.stored_count || result.files + 1));
+                } else if (data.status === 'complete') {
+                    result.files = Math.max(result.files, Number(data.stored_count || result.files));
+                } else if (data.status === 'stopped') {
+                    result.stopped = true;
+                } else if (data.status === 'cooldown') {
+                    result.cooldownSeconds = Math.max(result.cooldownSeconds, Number(data.cooldown_seconds || 0));
+                }
+                channelImportRun.done = queue.done + result.done;
+                channelImportRun.files = queue.files + result.files;
+                updateChannelImportProgress();
             }
         }
-        if (buffer.trim()) handleChannelImportEvent(JSON.parse(buffer));
 
-        saveImportedListKeys(selected.map(item => item.key));
-        channelListState.items = channelListState.items.filter(item => !selected.some(row => row.key === item.key));
-        renderChannelListResults();
-        setChannelListStatus('Selected rows imported and hidden from future batches.', 'success');
+        if (buffer.trim()) {
+            let data = JSON.parse(buffer);
+            handleChannelImportEvent(data);
+            if (data.status === 'source_complete') {
+                result.done++;
+            } else if (data.status === 'stored') {
+                result.files = Math.max(result.files, Number(data.stored_count || result.files + 1));
+            } else if (data.status === 'complete') {
+                result.files = Math.max(result.files, Number(data.stored_count || result.files));
+            } else if (data.status === 'stopped') {
+                result.stopped = true;
+            } else if (data.status === 'cooldown') {
+                result.cooldownSeconds = Math.max(result.cooldownSeconds, Number(data.cooldown_seconds || 0));
+            }
+            channelImportRun.done = queue.done + result.done;
+            channelImportRun.files = queue.files + result.files;
+            updateChannelImportProgress();
+        }
     } catch (error) {
-        setChannelListStatus(error.message || 'Import failed', 'error');
+        if (error.name === 'AbortError') {
+            result.stopped = true;
+        } else {
+            result.fatal = true;
+            setChannelListStatus(error.message || 'Import failed', 'error');
+            addLog(error.message || 'Import failed', 'error');
+        }
     } finally {
-        scrapeController = null;
-        channelListState.busy = false;
-        updateChannelControls();
+        if (channelImportController === controller) {
+            channelImportController = null;
+        }
+        if (scrapeController === controller) {
+            scrapeController = null;
+        }
     }
+
+    return result;
 }
 
 function setManageStatus(message, className = '') {
@@ -1299,7 +1695,7 @@ async function clearIndexChannel() {
 }
 
 function indexBatchSize() {
-    return Math.max(1, Math.min(30, Number(document.getElementById('indexBatchSize')?.value || 10)));
+    return Math.max(1, Math.min(30, Number(document.getElementById('indexBatchSize')?.value || 20)));
 }
 
 function updateIndexRun() {
@@ -1323,14 +1719,13 @@ function renderIndexPreview(data) {
     container.innerHTML = groups.map(group => {
         let label = group.letter === '#' ? 'Other' : group.letter;
         let titles = (group.titles || []).map(title => escapeHtml(title)).join(', ');
-        let posted = group.posted ? ' - posted' : '';
-        let disabled = group.posted ? 'disabled' : '';
-        let checked = group.posted ? '' : 'checked';
+        let posted = group.posted ? ' - existing' : '';
+        let batchLabel = group.batches_for_letter > 1 ? `${group.batch}/${group.batches_for_letter}` : group.batch;
         return `
             <label class="preview-batch ${group.posted ? 'posted' : ''}">
-                <input type="checkbox" class="index-batch-check" data-batch="${escapeHtml(group.global_batch)}" onchange="updateIndexSelectionCount()" ${checked} ${disabled}>
+                <input type="checkbox" class="index-batch-check" data-batch="${escapeHtml(group.global_batch)}" onchange="updateIndexSelectionCount()" checked>
                 <span>
-                    <strong>${escapeHtml(label)} batch ${escapeHtml(group.batch)} - ${escapeHtml(group.count)} movies${posted}</strong>
+                    <strong>${escapeHtml(label)} batch ${escapeHtml(batchLabel)} - ${escapeHtml(group.count)} movies${posted}</strong>
                     <span>${titles}</span>
                 </span>
             </label>
@@ -1413,8 +1808,8 @@ function handleIndexEvent(data) {
         indexRun.total = Number(data.total_batches || indexRun.total || 0);
         indexRun.current = `${data.title || 'Batch'} (${data.batch}/${indexRun.total})`;
         updateIndexRun();
-        appendIndexLog(`Posting ${indexRun.current} with ${data.movies || 0} movie(s).`, 'info');
-        setIndexStatus(`Posting batch ${data.batch} of ${indexRun.total}...`);
+        appendIndexLog(`${data.action === 'edit' ? 'Editing' : 'Posting'} ${indexRun.current} with ${data.movies || 0} movie(s).`, 'info');
+        setIndexStatus(`${data.action === 'edit' ? 'Editing' : 'Posting'} batch ${data.batch} of ${indexRun.total}...`);
         return;
     }
 
@@ -1444,8 +1839,13 @@ function handleIndexEvent(data) {
         indexRun.movies = Number(data.movies || indexRun.movies);
         indexRun.current = data.title || 'Posted';
         updateIndexRun();
-        appendIndexLog(`Finished ${indexRun.posted}/${indexRun.total} batches.`, 'success');
-        setIndexStatus(`Finished ${indexRun.posted}/${indexRun.total} batches.`, 'success');
+        appendIndexLog(`${data.action === 'edited' ? 'Updated' : 'Finished'} ${indexRun.posted}/${indexRun.total} batches.`, 'success');
+        setIndexStatus(`${data.action === 'edited' ? 'Updated' : 'Finished'} ${indexRun.posted}/${indexRun.total} batches.`, 'success');
+        return;
+    }
+
+    if (data.status === 'index_archived') {
+        appendIndexLog(`${data.title || 'Old batch'} merged into the balanced index.`, 'info');
         return;
     }
 
@@ -1639,6 +2039,9 @@ function appendLog(data) {
             break;
         case 'source_complete':
             addLog(`${title}: import done (${data.stored_count || 0} stored)`, 'info');
+            break;
+        case 'cooldown':
+            addLog(`${title}: ${data.detail || 'cooling down before next batch'}`, 'info');
             break;
         case 'title_complete':
             addLog(`${title}: done (${data.stored_count || 0} stored now, ${data.stored_total || 0} saved)`, 'info');
@@ -2002,8 +2405,8 @@ async function importSources(job) {
 
     let body = new URLSearchParams();
     body.set('username', (job.targets || []).join('\n'));
-    body.set('limit', String(Math.max(10, Math.min(500, Number(document.getElementById('importLimit')?.value || 120)))));
-    body.set('preferred_bot', normalizeTargetUsername(document.getElementById('preferredBot')?.value || '@Filestore23bot'));
+    body.set('limit', String(optionalPositiveInt(document.getElementById('importLimit')?.value)));
+    body.set('preferred_bot', normalizeTargetUsername(document.getElementById('preferredBot')?.value));
     body.set('direct_only', document.getElementById('importMode')?.value === 'direct' ? '1' : '0');
 
     try {

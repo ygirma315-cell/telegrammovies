@@ -88,7 +88,7 @@ const SCRAPE_AFTER_DOWNLOAD_TIMEOUT = 48.0;
 const SCRAPE_IDLE_RESULT_SECONDS = 5.0;
 const SCRAPE_IDLE_CLICK_SECONDS = 7.0;
 const SCRAPE_IDLE_DOWNLOAD_SECONDS = 12.0;
-const CHANNEL_IMPORT_HISTORY_LIMIT = 80;
+const CHANNEL_IMPORT_HISTORY_LIMIT = 0;
 const CHANNEL_IMPORT_MAX_FILES_PER_SOURCE = 20;
 const CHANNEL_IMPORT_MAX_FILES_PER_SELECTED = 80;
 const CHANNEL_IMPORT_BOT_TIMEOUT = 45.0;
@@ -98,7 +98,7 @@ const CHANNEL_IMPORT_CLICK_SETTLE_SECONDS = 2.0;
 const CHANNEL_IMPORT_CLICK_TIMEOUT_SECONDS = 10.0;
 const CHANNEL_IMPORT_MAX_BOT_CLICKS = 18;
 const CHANNEL_IMPORT_SELECTED_MAX_BOT_CLICKS = 80;
-const CHANNEL_IMPORT_PREFERRED_BOT = 'Filestore23bot';
+const CHANNEL_IMPORT_PREFERRED_BOT = '';
 
 // ---------- SESSION ----------
 ob_start();
@@ -216,7 +216,7 @@ try {
             importChannelSources(
                 postValue('username'),
                 (int) ($_POST['limit'] ?? CHANNEL_IMPORT_HISTORY_LIMIT),
-                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? CHANNEL_IMPORT_PREFERRED_BOT)),
+                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? '')),
                 ($_POST['direct_only'] ?? '') === '1'
             );
             break;
@@ -225,14 +225,17 @@ try {
                 postValue('username'),
                 (int) ($_POST['offset_id'] ?? 0),
                 (int) ($_POST['limit'] ?? 30),
-                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? CHANNEL_IMPORT_PREFERRED_BOT)),
+                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? '')),
                 json_decode((string) ($_POST['skip_keys'] ?? '[]'), true) ?: []
             ));
             break;
         case 'import_selected_lists':
             importSelectedChannelLists(
                 json_decode(postValue('items'), true) ?: [],
-                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? CHANNEL_IMPORT_PREFERRED_BOT))
+                normalizeTelegramSourceTarget((string) ($_POST['preferred_bot'] ?? '')),
+                (int) ($_POST['file_limit'] ?? 0),
+                (int) ($_POST['chunk_size'] ?? 20),
+                (int) ($_POST['cooldown_seconds'] ?? 0)
             );
             break;
         case 'rebuild_catalog':
@@ -248,11 +251,11 @@ try {
             sendJson(postIndexBatches());
             break;
         case 'index_preview':
-            sendJson(indexPreview((int) ($_POST['batch_size'] ?? 10)));
+            sendJson(indexPreview((int) ($_POST['batch_size'] ?? 20)));
             break;
         case 'post_index_stream':
             postIndexBatchesStream(
-                (int) ($_POST['batch_size'] ?? 10),
+                (int) ($_POST['batch_size'] ?? 20),
                 (string) ($_POST['main_channel'] ?? ''),
                 (string) ($_POST['mode'] ?? 'resume'),
                 json_decode((string) ($_POST['selected_batches'] ?? '[]'), true) ?: [],
@@ -843,11 +846,21 @@ function normalizeTelegramSourceTarget(string $target): string {
         return '';
     }
 
+    $target = preg_replace('/\s+/', '', $target) ?? $target;
+    if (preg_match('/^tg:\/\/join\?invite=([^&#]+)/i', $target, $matches)) {
+        return 'https://t.me/+' . $matches[1];
+    }
+    if (preg_match('/^(?:https?:\/\/)?(?:www\.)?(?:t|telegram)\.me\/(?:joinchat\/|\+)([^\/?#]+)/i', $target, $matches)) {
+        return 'https://t.me/+' . $matches[1];
+    }
+    if (preg_match('/^\+[A-Za-z0-9_-]+$/', $target)) {
+        return 'https://t.me/' . $target;
+    }
+
     $target = preg_replace('/^https?:\/\/(?:www\.)?(?:t|telegram)\.me\//i', '@', $target) ?? $target;
     $target = preg_replace('/^(?:t|telegram)\.me\//i', '@', $target) ?? $target;
     $target = strtok($target, "?#") ?: $target;
     $target = preg_replace('/\/.*$/', '', $target) ?? $target;
-    $target = preg_replace('/\s+/', '', $target) ?? $target;
 
     if ($target !== '' && $target[0] !== '@' && !preg_match('/^-?\d+$/', $target)) {
         $target = '@' . $target;
@@ -1020,6 +1033,10 @@ function latestMessageId(API $madeline, array $peer): int {
 }
 
 function latestBotMessageId(API $madeline, string $botTarget): ?int {
+    if (trim($botTarget) === '') {
+        return null;
+    }
+
     try {
         $peer = $madeline->getInfo(ltrim($botTarget, '@'), API::INFO_TYPE_PEER);
         return latestMessageId($madeline, $peer);
@@ -1053,14 +1070,16 @@ function findRecentDocumentMessage(API $madeline, array $peer, int $baselineId, 
 }
 
 function peerHistoryOldestFirst(API $madeline, array $peer, int $limit): array {
-    $limit = max(1, $limit);
+    $unlimited = $limit <= 0;
+    $limit = $unlimited ? 0 : max(1, $limit);
     $messages = [];
     $offsetId = 0;
 
-    while (count($messages) < $limit) {
+    while ($unlimited || count($messages) < $limit) {
+        $requestLimit = $unlimited ? 100 : min(100, $limit - count($messages));
         $batch = $madeline->messages->getHistory([
             'peer' => $peer,
-            'limit' => min(100, $limit - count($messages)),
+            'limit' => $requestLimit,
             'offset_id' => $offsetId,
         ]);
 
@@ -1081,7 +1100,7 @@ function peerHistoryOldestFirst(API $madeline, array $peer, int $limit): array {
             $messages[] = $message;
         }
 
-        if ($oldestId === null || $oldestId <= 1 || count($rows) < 100) {
+        if ($oldestId === null || $oldestId <= 1 || count($rows) < $requestLimit) {
             break;
         }
         $offsetId = $oldestId;
@@ -1487,7 +1506,8 @@ function startUrlScore(?array $start, string $preferredBot = CHANNEL_IMPORT_PREF
     }
 
     $domain = strtolower((string) ($start['domain'] ?? ''));
-    if ($domain === strtolower(ltrim($preferredBot, '@'))) {
+    $preferredDomain = strtolower(ltrim($preferredBot, '@'));
+    if ($preferredDomain !== '' && $domain === $preferredDomain) {
         return 100;
     }
     if (str_contains($domain, 'file') || str_contains($domain, 'store') || str_contains($domain, 'movie')) {
@@ -1644,13 +1664,15 @@ function previewChannelLists(string $sourceInput, int $offsetId = 0, int $limit 
         return ['error' => 'Please login first'];
     }
 
+    $preferredBot = normalizeTelegramSourceTarget($preferredBot);
+    $includeBotButtons = $preferredBot !== '';
     $targets = sourceTargetsFromInput($sourceInput);
     if (!$targets) {
         return ['error' => 'Add a channel, group, or bot source.'];
     }
 
     $target = $targets[0];
-    $limit = max(5, min(80, $limit));
+    $limit = max(1, min(80, $limit));
     $skip = array_fill_keys(array_map('strval', $skipKeys), true);
 
     try {
@@ -1683,20 +1705,22 @@ function previewChannelLists(string $sourceInput, int $offsetId = 0, int $limit 
             }
         }
 
-        $buttonItems = [];
-        foreach (($message['reply_markup']['rows'] ?? []) as $row) {
-            foreach (($row['buttons'] ?? []) as $button) {
-                if (!isImportButton($button)) {
-                    continue;
-                }
-                $item = buildPreviewItem($target, $message, $button);
-                if (empty($skip[$item['key']]) && !$item['stored']) {
-                    $buttonItems[] = $item;
+        if ($includeBotButtons) {
+            $buttonItems = [];
+            foreach (($message['reply_markup']['rows'] ?? []) as $row) {
+                foreach (($row['buttons'] ?? []) as $button) {
+                    if (!isImportButton($button)) {
+                        continue;
+                    }
+                    $item = buildPreviewItem($target, $message, $button);
+                    if (empty($skip[$item['key']]) && !$item['stored']) {
+                        $buttonItems[] = $item;
+                    }
                 }
             }
+            usort($buttonItems, fn($left, $right) => startUrlScore($right['bot'] ? ['domain' => ltrim((string) $right['bot'], '@')] : null, $preferredBot) <=> startUrlScore($left['bot'] ? ['domain' => ltrim((string) $left['bot'], '@')] : null, $preferredBot));
+            array_push($items, ...$buttonItems);
         }
-        usort($buttonItems, fn($left, $right) => startUrlScore($right['bot'] ? ['domain' => ltrim((string) $right['bot'], '@')] : null, $preferredBot) <=> startUrlScore($left['bot'] ? ['domain' => ltrim((string) $left['bot'], '@')] : null, $preferredBot));
-        array_push($items, ...$buttonItems);
     }
 
     return [
@@ -1716,7 +1740,13 @@ function streamSelectedBatchComplete(string $title, int $storedBefore, int $stor
     ]);
 }
 
-function importSelectedChannelLists(array $items, string $preferredBot = CHANNEL_IMPORT_PREFERRED_BOT): void {
+function importSelectedChannelLists(
+    array $items,
+    string $preferredBot = CHANNEL_IMPORT_PREFERRED_BOT,
+    int $fileLimit = 0,
+    int $chunkSize = 20,
+    int $cooldownSeconds = 0
+): void {
     global $BOT_USERNAME;
 
     $madeline = getMadeline();
@@ -1736,12 +1766,27 @@ function importSelectedChannelLists(array $items, string $preferredBot = CHANNEL
     ignore_user_abort(false);
     clearStopScrape();
 
+    $originalItemTotal = count($items);
+    $chunkSize = max(1, min(80, $chunkSize));
+    if ($originalItemTotal > $chunkSize) {
+        $items = array_slice($items, 0, $chunkSize);
+    }
+
     $storedTotal = 0;
     $itemTotal = count($items);
+    $deferredCount = max(0, $originalItemTotal - $itemTotal);
     $itemIndex = 0;
+    $preferredBot = normalizeTelegramSourceTarget($preferredBot);
+    $fileLimit = max(0, $fileLimit);
+    $cooldownSeconds = max(0, min(600, $cooldownSeconds));
+    $maxStoredTotal = $fileLimit > 0 ? $fileLimit : PHP_INT_MAX;
+    $maxBotClicks = $fileLimit > 0 ? max(CHANNEL_IMPORT_SELECTED_MAX_BOT_CLICKS, $fileLimit) : PHP_INT_MAX;
     foreach ($items as $item) {
         if (shouldStopScrape()) {
             streamJsonLine(['status' => 'stopped']);
+            break;
+        }
+        if ($storedTotal >= $maxStoredTotal) {
             break;
         }
         if (!is_array($item)) {
@@ -1798,6 +1843,11 @@ function importSelectedChannelLists(array $items, string $preferredBot = CHANNEL
                 streamSelectedBatchComplete($fallbackTitle, $itemStoredBefore, $storedTotal);
                 continue;
             }
+            if ($preferredBot === '') {
+                streamJsonLine(['status' => 'found_no_file', 'title' => $fallbackTitle, 'detail' => 'button rows need a preferred bot; direct file rows work without one']);
+                streamSelectedBatchComplete($fallbackTitle, $itemStoredBefore, $storedTotal);
+                continue;
+            }
 
             $label = (string) ($button['text'] ?? '');
             $url = (string) ($button['url'] ?? '');
@@ -1842,13 +1892,13 @@ function importSelectedChannelLists(array $items, string $preferredBot = CHANNEL
                     $start['domain'],
                     $buttonTitle,
                     $BOT_USERNAME,
-                    CHANNEL_IMPORT_MAX_FILES_PER_SELECTED,
+                    max(0, $maxStoredTotal - $storedTotal),
                     $target,
                     $preferredBot,
                     $botBaseline,
                     CHANNEL_IMPORT_SELECTED_BOT_TIMEOUT,
                     CHANNEL_IMPORT_BOT_IDLE_SECONDS,
-                    CHANNEL_IMPORT_SELECTED_MAX_BOT_CLICKS
+                    $maxBotClicks
                 );
                 $storedTotal += (int) ($botImport['stored'] ?? 0);
                 streamSelectedBatchComplete($buttonTitle, $itemStoredBefore, $storedTotal);
@@ -1864,24 +1914,55 @@ function importSelectedChannelLists(array $items, string $preferredBot = CHANNEL
                     ltrim($preferredBot, '@'),
                     $buttonTitle,
                     $BOT_USERNAME,
-                    CHANNEL_IMPORT_MAX_FILES_PER_SELECTED,
+                    max(0, $maxStoredTotal - $storedTotal),
                     $target,
                     $preferredBot,
                     $botBaseline,
                     CHANNEL_IMPORT_SELECTED_BOT_TIMEOUT,
                     CHANNEL_IMPORT_BOT_IDLE_SECONDS,
-                    CHANNEL_IMPORT_SELECTED_MAX_BOT_CLICKS
+                    $maxBotClicks
                 );
                 $storedTotal += (int) ($botImport['stored'] ?? 0);
             }
             streamSelectedBatchComplete($buttonTitle, $itemStoredBefore, $storedTotal);
         } catch (Throwable $error) {
-            streamJsonLine(['status' => 'found_no_file', 'title' => $fallbackTitle, 'detail' => $error->getMessage()]);
+            $errorMessage = $error->getMessage();
+            if (preg_match('/FLOOD_WAIT_?(\d+)/i', $errorMessage, $match)) {
+                $waitSeconds = max(1, (int) $match[1]);
+                streamJsonLine([
+                    'status' => 'cooldown',
+                    'title' => $fallbackTitle,
+                    'detail' => 'Telegram flood wait for ' . $waitSeconds . ' second(s); this row will retry after the rest.',
+                    'cooldown_seconds' => $waitSeconds,
+                ]);
+                streamJsonLine([
+                    'status' => 'stopped',
+                    'title' => $fallbackTitle,
+                    'detail' => 'rate limited',
+                ]);
+                break;
+            }
+
+            streamJsonLine(['status' => 'found_no_file', 'title' => $fallbackTitle, 'detail' => $errorMessage]);
             streamSelectedBatchComplete($fallbackTitle, $itemStoredBefore, $storedTotal);
         }
     }
 
-    streamJsonLine(['status' => 'complete', 'stored_count' => $storedTotal]);
+    if ($cooldownSeconds > 0 && $deferredCount > 0 && !shouldStopScrape()) {
+        streamJsonLine([
+            'status' => 'cooldown',
+            'detail' => 'resting before deferred selected rows',
+            'cooldown_seconds' => $cooldownSeconds,
+        ]);
+        waitForRetryWindow($cooldownSeconds);
+    }
+
+    streamJsonLine([
+        'status' => 'complete',
+        'stored_count' => $storedTotal,
+        'processed_count' => $itemIndex,
+        'deferred_count' => $deferredCount,
+    ]);
     clearStopScrape();
     exit;
 }
@@ -1921,6 +2002,10 @@ function observeBotImport(
     int $maxClicks = CHANNEL_IMPORT_MAX_BOT_CLICKS
 ): array {
     $botTarget = ltrim($botTarget, '@');
+    if ($botTarget === '') {
+        return ['stored' => 0, 'clicked' => 0];
+    }
+
     $peer = $madeline->getInfo($botTarget, API::INFO_TYPE_PEER);
     $baselineId ??= latestMessageId($madeline, $peer);
     $timeout ??= CHANNEL_IMPORT_BOT_TIMEOUT;
@@ -2102,8 +2187,11 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
     set_time_limit(0);
     ignore_user_abort(false);
 
-    $historyLimit = max(10, min(500, $historyLimit));
-    $maxFilesPerSource = $directOnly ? $historyLimit : CHANNEL_IMPORT_MAX_FILES_PER_SOURCE;
+    $historyLimit = max(0, $historyLimit);
+    $preferredBot = normalizeTelegramSourceTarget($preferredBot);
+    $directChannelOnly = $directOnly || $preferredBot === '';
+    $maxFilesPerSource = $historyLimit > 0 ? $historyLimit : PHP_INT_MAX;
+    $maxBotClicks = $historyLimit > 0 ? max(CHANNEL_IMPORT_MAX_BOT_CLICKS, $historyLimit) : PHP_INT_MAX;
     $stopped = false;
 
     foreach ($targets as $target) {
@@ -2117,7 +2205,7 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
         streamJsonLine([
             'status' => 'source_import',
             'title' => $sourceName,
-            'detail' => $directOnly ? 'scanning direct files only' : 'scanning recent posts and bot buttons',
+            'detail' => $directChannelOnly ? 'scanning direct channel files' : 'scanning recent posts and bot buttons',
         ]);
 
         try {
@@ -2126,7 +2214,7 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
             $peer = $madeline->getInfo($targetForInfo, API::INFO_TYPE_PEER);
             $isBot = ($peerInfo['type'] ?? '') === API::PEER_TYPE_BOT || !empty($peerInfo['User']['bot']);
 
-            if ($directOnly && $isBot) {
+            if ($directChannelOnly && $isBot) {
                 streamJsonLine([
                     'status' => 'found_no_file',
                     'title' => $sourceName,
@@ -2138,90 +2226,116 @@ function importChannelSources(string $sourceInput, int $historyLimit = CHANNEL_I
             if ($isBot) {
                 $botBaseline = latestBotMessageId($madeline, $targetForInfo);
                 $madeline->messages->sendMessage(['peer' => $peer, 'message' => '/start']);
-                $botImport = observeBotImport($madeline, $targetForInfo, $sourceName, $BOT_USERNAME, $maxFilesPerSource, $sourceName, $preferredBot, $botBaseline);
+                $botImport = observeBotImport($madeline, $targetForInfo, $sourceName, $BOT_USERNAME, $maxFilesPerSource, $sourceName, $preferredBot, $botBaseline, null, null, $maxBotClicks);
                 $sourceStored += (int) ($botImport['stored'] ?? 0);
             } else {
-                $history = ['messages' => peerHistoryOldestFirst($madeline, $peer, $historyLimit)];
-
-                foreach ((array) ($history['messages'] ?? []) as $message) {
-                    if (shouldStopScrape()) {
-                        $stopped = true;
-                        break 2;
+                $offsetId = 0;
+                while ($sourceStored < $maxFilesPerSource) {
+                    $history = $madeline->messages->getHistory([
+                        'peer' => $peer,
+                        'limit' => 100,
+                        'offset_id' => $offsetId,
+                    ]);
+                    $messages = array_values((array) ($history['messages'] ?? []));
+                    if (!$messages) {
+                        break;
                     }
-                    if (!is_array($message)) {
-                        continue;
-                    }
 
-                    $fallbackTitle = importTitleFromMessage($message, $sourceName);
-                    if (messageHasDocument($message)) {
-                        $stored = storeImportedDocument($madeline, $peer, $message, $BOT_USERNAME, $fallbackTitle, $sourceName);
-                        if (!empty($stored['stored'])) {
-                            $sourceStored++;
+                    $oldestId = null;
+                    foreach ($messages as $message) {
+                        if (shouldStopScrape()) {
+                            $stopped = true;
+                            break 2;
                         }
-                        streamStoredImport($stored, $stored['title'] ?? $fallbackTitle, $sourceName, $sourceStored);
-                    }
+                        if (!is_array($message)) {
+                            continue;
+                        }
 
-                    if ($directOnly) {
+                        $messageId = (int) ($message['id'] ?? 0);
+                        if ($messageId > 0) {
+                            $oldestId = $oldestId === null ? $messageId : min($oldestId, $messageId);
+                        }
+
+                        $fallbackTitle = importTitleFromMessage($message, $sourceName);
+                        if (messageHasDocument($message)) {
+                            $stored = storeImportedDocument($madeline, $peer, $message, $BOT_USERNAME, $fallbackTitle, $sourceName);
+                            if (!empty($stored['stored'])) {
+                                $sourceStored++;
+                            }
+                            streamStoredImport($stored, $stored['title'] ?? $fallbackTitle, $sourceName, $sourceStored);
+                        }
+
                         if ($sourceStored >= $maxFilesPerSource) {
                             break;
                         }
-                        continue;
-                    }
 
-                    foreach (($message['reply_markup']['rows'] ?? []) as $row) {
-                        foreach (($row['buttons'] ?? []) as $button) {
-                            if (!isImportButton($button)) {
-                                continue;
-                            }
+                        if ($directChannelOnly) {
+                            continue;
+                        }
 
-                            $label = (string) ($button['text'] ?? '');
-                            $url = (string) ($button['url'] ?? '');
-                            $buttonTitle = importTitleFromButton($button, $message, $fallbackTitle);
-                            $preferredStart = $url !== '' ? parseTelegramStartUrl($url) : null;
-
-                            if ($url !== '' && parseTelegramMessageUrl($url)) {
-                                $stored = storeImportedTelegramUrl($madeline, $url, $BOT_USERNAME, $buttonTitle, $label, $sourceName);
-                                if (!empty($stored['stored'])) {
-                                    $sourceStored++;
+                        foreach (($message['reply_markup']['rows'] ?? []) as $row) {
+                            foreach (($row['buttons'] ?? []) as $button) {
+                                if (!isImportButton($button)) {
+                                    continue;
                                 }
-                                streamStoredImport($stored, $stored['title'] ?? $buttonTitle, $sourceName, $sourceStored);
-                                continue;
-                            }
 
-                            $start = $preferredStart;
-                            if (!$start && (($button['_'] ?? '') === 'keyboardButtonCallback') && isset($button['data'])) {
-                                $click = clickOneButton($madeline, $peer, $message, $button, $BOT_USERNAME);
-                                $start = !empty($click['url']) ? parseTelegramStartUrl((string) $click['url']) : null;
-                                if (!$start && !empty($click['url']) && parseTelegramMessageUrl((string) $click['url'])) {
-                                    $stored = storeImportedTelegramUrl($madeline, (string) $click['url'], $BOT_USERNAME, $buttonTitle, $label, $sourceName);
+                                $label = (string) ($button['text'] ?? '');
+                                $url = (string) ($button['url'] ?? '');
+                                $buttonTitle = importTitleFromButton($button, $message, $fallbackTitle);
+                                $preferredStart = $url !== '' ? parseTelegramStartUrl($url) : null;
+
+                                if ($url !== '' && parseTelegramMessageUrl($url)) {
+                                    $stored = storeImportedTelegramUrl($madeline, $url, $BOT_USERNAME, $buttonTitle, $label, $sourceName);
                                     if (!empty($stored['stored'])) {
                                         $sourceStored++;
                                     }
                                     streamStoredImport($stored, $stored['title'] ?? $buttonTitle, $sourceName, $sourceStored);
+                                    if ($sourceStored >= $maxFilesPerSource) {
+                                        break 3;
+                                    }
+                                    continue;
                                 }
-                            }
 
-                            if ($start) {
-                                $botBaseline = latestBotMessageId($madeline, (string) $start['domain']);
-                                streamJsonLine([
-                                    'status' => 'opening',
-                                    'title' => $buttonTitle,
-                                    'detail' => 'opening @' . $start['domain'] . ' from ' . $sourceName,
-                                ]);
-                                openTelegramStartUrl($madeline, $peer, 'https://t.me/' . $start['domain'] . '?start=' . rawurlencode($start['payload']));
-                                usleep(500000);
-                                $remaining = max(0, $maxFilesPerSource - $sourceStored);
-                                if ($remaining > 0) {
-                                    $botImport = observeBotImport($madeline, $start['domain'], $buttonTitle, $BOT_USERNAME, $remaining, $sourceName, $preferredBot, $botBaseline);
-                                    $sourceStored += (int) ($botImport['stored'] ?? 0);
+                                $start = $preferredStart;
+                                if (!$start && (($button['_'] ?? '') === 'keyboardButtonCallback') && isset($button['data'])) {
+                                    $click = clickOneButton($madeline, $peer, $message, $button, $BOT_USERNAME);
+                                    $start = !empty($click['url']) ? parseTelegramStartUrl((string) $click['url']) : null;
+                                    if (!$start && !empty($click['url']) && parseTelegramMessageUrl((string) $click['url'])) {
+                                        $stored = storeImportedTelegramUrl($madeline, (string) $click['url'], $BOT_USERNAME, $buttonTitle, $label, $sourceName);
+                                        if (!empty($stored['stored'])) {
+                                            $sourceStored++;
+                                        }
+                                        streamStoredImport($stored, $stored['title'] ?? $buttonTitle, $sourceName, $sourceStored);
+                                    }
                                 }
-                            }
 
-                            if ($sourceStored >= $maxFilesPerSource) {
-                                break 3;
+                                if ($start) {
+                                    $botBaseline = latestBotMessageId($madeline, (string) $start['domain']);
+                                    streamJsonLine([
+                                        'status' => 'opening',
+                                        'title' => $buttonTitle,
+                                        'detail' => 'opening @' . $start['domain'] . ' from ' . $sourceName,
+                                    ]);
+                                    openTelegramStartUrl($madeline, $peer, 'https://t.me/' . $start['domain'] . '?start=' . rawurlencode($start['payload']));
+                                    usleep(500000);
+                                    $remaining = max(0, $maxFilesPerSource - $sourceStored);
+                                    if ($remaining > 0) {
+                                        $botImport = observeBotImport($madeline, $start['domain'], $buttonTitle, $BOT_USERNAME, $remaining, $sourceName, $preferredBot, $botBaseline, null, null, $maxBotClicks);
+                                        $sourceStored += (int) ($botImport['stored'] ?? 0);
+                                    }
+                                }
+
+                                if ($sourceStored >= $maxFilesPerSource) {
+                                    break 3;
+                                }
                             }
                         }
                     }
+
+                    if ($sourceStored >= $maxFilesPerSource || $oldestId === null || $oldestId <= 1 || count($messages) < 100) {
+                        break;
+                    }
+                    $offsetId = $oldestId;
                 }
             }
         } catch (Throwable $sourceError) {
@@ -2526,7 +2640,7 @@ function statusOverview(): array {
         'files' => (int) ($catalog['files'] ?? 0),
         'catalog_entries' => count($rawCatalog),
         'deliverable_entries' => $deliverableEntries,
-        'index_batches' => count(indexBatchGroups(10)),
+        'index_batches' => count(indexBatchGroups(20)),
     ];
 
     try {
@@ -2929,7 +3043,28 @@ function indexLetterForTitle(string $title): string {
     return preg_match('/[A-Z]/', $first) ? $first : '#';
 }
 
-function indexBatchGroups(int $batchSize = 10): array {
+function fairIndexChunks(array $items, int $maxPerBatch): array {
+    $total = count($items);
+    if ($total === 0) {
+        return [];
+    }
+
+    $batchCount = (int) ceil($total / max(1, $maxPerBatch));
+    $baseSize = intdiv($total, $batchCount);
+    $remainder = $total % $batchCount;
+    $chunks = [];
+    $offset = 0;
+
+    for ($index = 0; $index < $batchCount; $index++) {
+        $size = $baseSize + ($index < $remainder ? 1 : 0);
+        $chunks[] = array_slice($items, $offset, $size);
+        $offset += $size;
+    }
+
+    return $chunks;
+}
+
+function indexBatchGroups(int $batchSize = 20): array {
     $batchSize = max(1, min(30, $batchSize));
     $letters = [];
 
@@ -2955,11 +3090,14 @@ function indexBatchGroups(int $batchSize = 10): array {
             continue;
         }
 
-        $chunks = array_chunk($letters[$letter], $batchSize);
+        $chunks = fairIndexChunks($letters[$letter], $batchSize);
+        $letterBatchCount = count($chunks);
         foreach ($chunks as $chunkIndex => $chunk) {
             $groups[] = [
                 'letter' => $letter,
                 'batch' => $chunkIndex + 1,
+                'batches_for_letter' => $letterBatchCount,
+                'max_per_batch' => $batchSize,
                 'total_for_letter' => count($letters[$letter]),
                 'items' => $chunk,
             ];
@@ -2970,14 +3108,19 @@ function indexBatchGroups(int $batchSize = 10): array {
 }
 
 function indexGroupsSignature(array $groups): string {
-    $keys = [];
-    foreach ($groups as $group) {
+    $parts = [];
+    foreach ($groups as $index => $group) {
+        $groupKeys = [];
         foreach ((array) ($group['items'] ?? []) as $item) {
-            $keys[] = (string) ($item['key'] ?? '');
+            $groupKeys[] = (string) ($item['key'] ?? '');
         }
+        $parts[] = ($index + 1)
+            . ':' . (string) ($group['letter'] ?? '#')
+            . ':' . (int) ($group['batch'] ?? 1)
+            . ':' . implode(',', $groupKeys);
     }
 
-    return hash('sha256', implode('|', $keys));
+    return hash('sha256', implode('|', $parts));
 }
 
 function readIndexPostState(): array {
@@ -3033,7 +3176,7 @@ function indexPostedBatchNumbersFromState(int $batchSize, string $signature, int
     return array_keys($posted);
 }
 
-function indexPostedBatchNumbersFromChannel(int $totalBatches, int $scanLimit = 700): array {
+function indexChannelBatchMessageMap(int $scanLimit = 2000): array {
     global $INDEX_CHANNEL_ID;
 
     $madeline = getMadeline();
@@ -3044,7 +3187,7 @@ function indexPostedBatchNumbersFromChannel(int $totalBatches, int $scanLimit = 
     $peer = $madeline->getInfo($INDEX_CHANNEL_ID, API::INFO_TYPE_PEER);
     $offsetId = 0;
     $checked = 0;
-    $posted = [];
+    $messagesByBatch = [];
 
     while ($checked < $scanLimit) {
         $history = $madeline->messages->getHistory([
@@ -3073,8 +3216,11 @@ function indexPostedBatchNumbersFromChannel(int $totalBatches, int $scanLimit = 
             if (preg_match('/Index\s+batch\s+(\d+)\s+of\s+(\d+)/i', $text, $match)) {
                 $batchNumber = (int) $match[1];
                 $batchTotal = (int) $match[2];
-                if ($batchNumber > 0 && $batchNumber <= $totalBatches && ($batchTotal === $totalBatches || $batchTotal === 0)) {
-                    $posted[$batchNumber] = true;
+                if ($batchNumber > 0 && !isset($messagesByBatch[$batchNumber])) {
+                    $messagesByBatch[$batchNumber] = [
+                        'message_id' => $id,
+                        'total_batches' => $batchTotal,
+                    ];
                 }
             }
         }
@@ -3083,6 +3229,18 @@ function indexPostedBatchNumbersFromChannel(int $totalBatches, int $scanLimit = 
             break;
         }
         $offsetId = $oldestId;
+    }
+
+    ksort($messagesByBatch);
+    return $messagesByBatch;
+}
+
+function indexPostedBatchNumbersFromChannel(int $totalBatches, int $scanLimit = 2000): array {
+    $posted = [];
+    foreach (indexChannelBatchMessageMap($scanLimit) as $batchNumber => $message) {
+        if ($batchNumber > 0 && $batchNumber <= $totalBatches) {
+            $posted[$batchNumber] = true;
+        }
     }
 
     ksort($posted);
@@ -3211,11 +3369,13 @@ function indexMessageText(array $group, int $globalBatch, int $totalBatches, str
 
     $letter = (string) ($group['letter'] ?? '#');
     $batch = (int) ($group['batch'] ?? 1);
+    $letterBatches = (int) ($group['batches_for_letter'] ?? 1);
     $items = (array) ($group['items'] ?? []);
     $mainChannel = indexChannelMention($mainChannel);
+    $batchLabel = $letterBatches > 1 ? ($batch . ' of ' . $letterBatches) : (string) $batch;
 
     $lines = [
-        '<b>Movies ' . telegramHtml($letter === '#' ? 'Other' : $letter) . ' - Batch ' . $batch . '</b>',
+        '<b>Movies ' . telegramHtml($letter === '#' ? 'Other' : $letter) . ' - Batch ' . telegramHtml($batchLabel) . '</b>',
         'Index batch ' . $globalBatch . ' of ' . $totalBatches,
         '',
     ];
@@ -3265,18 +3425,96 @@ function indexReplyMarkup(array $group): array {
 function sendIndexBatch(array $group, int $globalBatch, int $totalBatches, string $mainChannel = ''): array {
     global $INDEX_CHANNEL_ID;
 
-    return botApi('sendMessage', [
+    $result = botApi('sendMessage', [
         'chat_id' => $INDEX_CHANNEL_ID,
         'text' => indexMessageText($group, $globalBatch, $totalBatches, $mainChannel),
         'parse_mode' => 'HTML',
         'disable_web_page_preview' => true,
         'reply_markup' => indexReplyMarkup($group),
     ]);
+    if (!empty($result['ok'])) {
+        $result['index_action'] = 'posted';
+    }
+
+    return $result;
 }
 
-function sendIndexBatchWithRetry(array $group, int $globalBatch, int $totalBatches, string $mainChannel = '', bool $stream = false): array {
+function editIndexBatch(int $messageId, array $group, int $globalBatch, int $totalBatches, string $mainChannel = ''): array {
+    global $INDEX_CHANNEL_ID;
+
+    $result = botApi('editMessageText', [
+        'chat_id' => $INDEX_CHANNEL_ID,
+        'message_id' => $messageId,
+        'text' => indexMessageText($group, $globalBatch, $totalBatches, $mainChannel),
+        'parse_mode' => 'HTML',
+        'disable_web_page_preview' => true,
+        'reply_markup' => indexReplyMarkup($group),
+    ]);
+
+    $description = (string) ($result['description'] ?? '');
+    if (!empty($result['ok']) || stripos($description, 'message is not modified') !== false) {
+        $result['ok'] = true;
+        $result['index_action'] = 'edited';
+    }
+
+    return $result;
+}
+
+function archiveSurplusIndexMessage(int $messageId, int $oldBatch, int $newTotalBatches, string $mainChannel = ''): array {
+    global $BOT_USERNAME, $INDEX_CHANNEL_ID;
+
+    $mainChannel = indexChannelMention($mainChannel);
+    $text = implode("\n", [
+        '<b>Index updated</b>',
+        'This older batch ' . $oldBatch . ' was merged into the balanced A-Z index.',
+        'Use the updated index messages 1-' . $newTotalBatches . ' above.',
+        '',
+        'Main channel: ' . telegramHtml($mainChannel),
+        'Bot: @' . telegramHtml(ltrim($BOT_USERNAME, '@')),
+    ]);
+
+    $result = botApi('editMessageText', [
+        'chat_id' => $INDEX_CHANNEL_ID,
+        'message_id' => $messageId,
+        'text' => $text,
+        'parse_mode' => 'HTML',
+        'disable_web_page_preview' => true,
+        'reply_markup' => [
+            'inline_keyboard' => [[[
+                'text' => 'Get Files Via Bot',
+                'url' => 'https://t.me/' . ltrim($BOT_USERNAME, '@'),
+            ]]],
+        ],
+    ]);
+
+    $description = (string) ($result['description'] ?? '');
+    if (!empty($result['ok']) || stripos($description, 'message is not modified') !== false) {
+        $result['ok'] = true;
+        $result['index_action'] = 'archived';
+    }
+
+    return $result;
+}
+
+function upsertIndexBatch(array $group, int $globalBatch, int $totalBatches, string $mainChannel = '', ?int $messageId = null): array {
+    if ($messageId !== null && $messageId > 0) {
+        $edited = editIndexBatch($messageId, $group, $globalBatch, $totalBatches, $mainChannel);
+        if (!empty($edited['ok'])) {
+            return $edited;
+        }
+
+        $description = (string) ($edited['description'] ?? '');
+        if (stripos($description, 'message to edit not found') === false && stripos($description, 'message_id_invalid') === false) {
+            return $edited;
+        }
+    }
+
+    return sendIndexBatch($group, $globalBatch, $totalBatches, $mainChannel);
+}
+
+function sendIndexBatchWithRetry(array $group, int $globalBatch, int $totalBatches, string $mainChannel = '', bool $stream = false, ?int $messageId = null): array {
     for ($attempt = 1; $attempt <= 4; $attempt++) {
-        $result = sendIndexBatch($group, $globalBatch, $totalBatches, $mainChannel);
+        $result = upsertIndexBatch($group, $globalBatch, $totalBatches, $mainChannel, $messageId);
         if (!empty($result['ok'])) {
             return $result;
         }
@@ -3305,7 +3543,7 @@ function sendIndexBatchWithRetry(array $group, int $globalBatch, int $totalBatch
     return ['ok' => false, 'description' => 'Retry limit reached'];
 }
 
-function indexPreview(int $batchSize = 10): array {
+function indexPreview(int $batchSize = 20): array {
     $groups = indexBatchGroups($batchSize);
     $signature = indexGroupsSignature($groups);
     $postedNumbers = mergedPostedIndexBatches(max(1, min(30, $batchSize)), $signature, count($groups));
@@ -3319,6 +3557,7 @@ function indexPreview(int $batchSize = 10): array {
         $preview[] = [
             'letter' => $group['letter'],
             'batch' => $group['batch'],
+            'batches_for_letter' => (int) ($group['batches_for_letter'] ?? 1),
             'global_batch' => $batchNumber,
             'posted' => in_array($batchNumber, $postedNumbers, true),
             'count' => count($items),
@@ -3339,7 +3578,7 @@ function indexPreview(int $batchSize = 10): array {
     ];
 }
 
-function postIndexBatches(int $batchSize = 10): array {
+function postIndexBatches(int $batchSize = 20): array {
     $groups = indexBatchGroups($batchSize);
     if (!$groups) {
         return ['error' => 'No stored movies found in catalog yet. Rebuild or scrape first.'];
@@ -3348,8 +3587,11 @@ function postIndexBatches(int $batchSize = 10): array {
     $posted = 0;
     $movies = 0;
     $total = count($groups);
+    $messageMap = indexChannelBatchMessageMap();
     foreach ($groups as $index => $group) {
-        $result = sendIndexBatchWithRetry($group, $index + 1, $total);
+        $batchNumber = $index + 1;
+        $messageId = (int) ($messageMap[$batchNumber]['message_id'] ?? 0);
+        $result = sendIndexBatchWithRetry($group, $batchNumber, $total, '', false, $messageId > 0 ? $messageId : null);
         if (empty($result['ok'])) {
             return ['error' => $result['description'] ?? 'Failed to post index batch'];
         }
@@ -3359,11 +3601,18 @@ function postIndexBatches(int $batchSize = 10): array {
         usleep(180000);
     }
 
+    foreach ($messageMap as $batchNumber => $message) {
+        if ((int) $batchNumber > $total && !empty($message['message_id'])) {
+            archiveSurplusIndexMessage((int) $message['message_id'], (int) $batchNumber, $total);
+            usleep(180000);
+        }
+    }
+
     return ['success' => true, 'posted_batches' => $posted, 'movies' => $movies];
 }
 
 function postIndexBatchesStream(
-    int $batchSize = 10,
+    int $batchSize = 20,
     string $mainChannel = '',
     string $mode = 'resume',
     array $selectedBatches = [],
@@ -3394,16 +3643,17 @@ function postIndexBatchesStream(
         $selectedNumbers = range(1, $total);
     }
     $selectedLookup = array_fill_keys($selectedNumbers, true);
+    $selectedCoversAll = $selectedNumbers === range(1, $total);
     if ($mode === 'fresh') {
         clearIndexPostState();
         $postedNumbers = [];
     } else {
         $postedNumbers = mergedPostedIndexBatches($batchSize, $signature, $total);
     }
+    $messageMap = indexChannelBatchMessageMap();
     $postedLookup = array_fill_keys(array_map('intval', $postedNumbers), true);
-    $runAlreadyPosted = array_values(array_filter($selectedNumbers, fn($batchNumber) => isset($postedLookup[$batchNumber])));
-    $posted = count($runAlreadyPosted);
-    $movies = indexMovieCountForBatchNumbers($groups, $runAlreadyPosted);
+    $posted = 0;
+    $movies = 0;
     $runTotal = count($selectedNumbers);
     $cooldownEvery = max(0, min(50, $cooldownEvery));
     $cooldownSeconds = max(0, min(600, $cooldownSeconds));
@@ -3433,9 +3683,6 @@ function postIndexBatchesStream(
         if (!isset($selectedLookup[$batchNumber])) {
             continue;
         }
-        if (isset($postedLookup[$batchNumber])) {
-            continue;
-        }
 
         if (shouldStopScrape()) {
             streamJsonLine(['status' => 'stopped', 'posted_batches' => $runPosted, 'total_batches' => $runTotal, 'global_total_batches' => $total]);
@@ -3452,9 +3699,11 @@ function postIndexBatchesStream(
             'global_batch' => $batchNumber,
             'global_total_batches' => $total,
             'movies' => $count,
+            'action' => !empty($messageMap[$batchNumber]['message_id']) ? 'edit' : 'post',
         ]);
 
-        $result = sendIndexBatchWithRetry($group, $batchNumber, $total, $mainChannel, true);
+        $messageId = (int) ($messageMap[$batchNumber]['message_id'] ?? 0);
+        $result = sendIndexBatchWithRetry($group, $batchNumber, $total, $mainChannel, true, $messageId > 0 ? $messageId : null);
         if (!empty($result['stopped'])) {
             writeIndexPostState([
                 'batch_size' => $batchSize,
@@ -3487,6 +3736,7 @@ function postIndexBatchesStream(
             'global_batch' => $batchNumber,
             'global_total_batches' => $total,
             'movies' => $movies,
+            'action' => (string) ($result['index_action'] ?? 'posted'),
         ]);
 
         if ($cooldownEvery > 0 && $cooldownSeconds > 0 && $runPosted < $runTotal && $runPosted % $cooldownEvery === 0) {
@@ -3505,6 +3755,27 @@ function postIndexBatchesStream(
         }
 
         usleep(1500000);
+    }
+
+    if ($selectedCoversAll) {
+        foreach ($messageMap as $batchNumber => $message) {
+            $batchNumber = (int) $batchNumber;
+            $messageId = (int) ($message['message_id'] ?? 0);
+            if ($batchNumber <= $total || $messageId <= 0) {
+                continue;
+            }
+
+            $archive = archiveSurplusIndexMessage($messageId, $batchNumber, $total, $mainChannel);
+            if (!empty($archive['ok'])) {
+                streamJsonLine([
+                    'status' => 'index_archived',
+                    'title' => 'Old batch ' . $batchNumber,
+                    'global_batch' => $batchNumber,
+                    'global_total_batches' => $total,
+                ]);
+            }
+            usleep(500000);
+        }
     }
 
     clearStopScrape();

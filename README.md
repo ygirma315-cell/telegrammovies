@@ -53,3 +53,11 @@ php scripts/set_webhook.php https://your-render-service.onrender.com/telegram/we
 ```
 
 On Render, `AUTO_SET_WEBHOOK=true` uses Render's `RENDER_EXTERNAL_URL` and sets this webhook automatically during startup.
+
+Use `/health` for Render health checks or an external uptime monitor:
+
+```text
+https://your-render-service.onrender.com/health
+```
+
+Render free services can sleep when idle. To keep the bot responsive all the time, use a paid always-on service or point an uptime monitor at `/health`.
