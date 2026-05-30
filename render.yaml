@@ -25,3 +25,9 @@ services:
         value: "3"
       - key: MAIN_CHANNEL_USERNAME
         value: "@movieshddddd2"
+      - key: PUBLIC_BASE_URL
+        value: https://telegrammovies.onrender.com
+      - key: KEEPALIVE_SELF_PING_ENABLED
+        value: "true"
+      - key: KEEPALIVE_PING_INTERVAL_MINUTES
+        value: "5"

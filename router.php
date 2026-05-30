@@ -54,6 +54,37 @@ function routerJson(array $data, int $status = 200): void {
     echo json_encode($data);
 }
 
+function routerPath(string $path): string {
+    if (preg_match('/^(?:[A-Za-z]:[\\\\\/]|\/)/', $path) === 1) {
+        return $path;
+    }
+
+    return __DIR__ . DIRECTORY_SEPARATOR . $path;
+}
+
+function routerCatalogStats(): array {
+    $sessionCatalog = routerPath((string) (getenv('APP_SESSION_DIR') ?: 'sessions') . '/stored_movies.json');
+    $seedCatalog = routerPath((string) (getenv('CATALOG_SEED_FILE') ?: 'data/stored_movies.json'));
+    $file = is_file($sessionCatalog) ? $sessionCatalog : $seedCatalog;
+    $catalog = [];
+    if (is_file($file)) {
+        $decoded = json_decode((string) file_get_contents($file), true);
+        $catalog = is_array($decoded) ? $decoded : [];
+    }
+
+    $files = 0;
+    foreach ($catalog as $entry) {
+        $files += count((array) ($entry['items'] ?? []));
+    }
+
+    return [
+        'catalog_file' => str_replace(__DIR__ . DIRECTORY_SEPARATOR, '', $file),
+        'catalog_exists' => is_file($file),
+        'movies' => count($catalog),
+        'files' => $files,
+    ];
+}
+
 function routerServeMiniApp(string $path): bool {
     if ($path !== '/app' && $path !== '/app/' && !str_starts_with($path, '/app/')) {
         return false;
@@ -126,6 +157,15 @@ if ($method === 'OPTIONS') {
 }
 
 if (routerServeMiniApp($path)) {
+    return true;
+}
+
+if ($path === '/warmup' || $path === '/api/warmup') {
+    routerJson(array_merge([
+        'ok' => true,
+        'service' => 'telegrammovies-bot',
+        'warmed_at' => gmdate('c'),
+    ], routerCatalogStats()));
     return true;
 }
 

@@ -239,12 +239,19 @@ function botSearchCatalog(string $query, int $limit = 10): array {
     return $matches;
 }
 
+function botCatalogHasEntries(): bool {
+    return count(botReadCatalog()) > 0;
+}
+
 function botSendSearchResults(string|int $chatId, string $query): void {
     $matches = botSearchCatalog($query);
     if (!$matches) {
+        $message = botCatalogHasEntries()
+            ? "No matching movie files found for: $query"
+            : 'The movie catalog is warming up. Please try again in a moment.';
         botApi('sendMessage', [
             'chat_id' => $chatId,
-            'text' => botWithMainChannel("No movies found for: $query"),
+            'text' => botWithMainChannel($message),
         ]);
         return;
     }
@@ -269,7 +276,7 @@ function botDeliverMovieToChat(string|int $chatId, string $movieId): void {
     if (!$row) {
         botApi('sendMessage', [
             'chat_id' => $chatId,
-            'text' => botWithMainChannel('Movie is not available anymore.'),
+            'text' => botWithMainChannel('This old movie button no longer matches the catalog. Search the movie name again.'),
         ]);
         return;
     }

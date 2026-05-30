@@ -32,4 +32,4 @@ COPY . .
 ENV APP_SESSION_DIR=/tmp/telegrammovies-sessions
 EXPOSE 10000
 
-CMD ["sh", "-c", "mkdir -p \"$APP_SESSION_DIR\" && if [ \"$AUTO_SET_WEBHOOK\" = \"true\" ]; then php /app/scripts/set_webhook.php || true; fi && php -S 0.0.0.0:${PORT:-10000} -t /app /app/router.php"]
+CMD ["sh", "-c", "mkdir -p \"$APP_SESSION_DIR\" && if [ \"$AUTO_SET_WEBHOOK\" = \"true\" ]; then php /app/scripts/set_webhook.php || true; fi && php /app/scripts/keepalive.php & php -S 0.0.0.0:${PORT:-10000} -t /app /app/router.php"]

@@ -7,7 +7,7 @@ on:
     paths:
       - .github/workflows/keepalive.yml
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -16,15 +16,17 @@ jobs:
     steps:
       - name: Ping Render health endpoint
         env:
+          WARMUP_URL: https://telegrammovies.onrender.com/warmup
           HEALTH_URL: https://telegrammovies.onrender.com/health
         run: |
           for attempt in 1 2 3; do
             echo "Wake attempt ${attempt}"
-            code=$(curl -L -sS -o /tmp/health.json -w "%{http_code}" --max-time 80 "${HEALTH_URL}?source=github-actions&attempt=${attempt}&t=$(date +%s)" || true)
-            cat /tmp/health.json || true
+            code=$(curl -L -sS -o /tmp/warmup.json -w "%{http_code}" --max-time 80 "${WARMUP_URL}?source=github-actions&attempt=${attempt}&t=$(date +%s)" || true)
+            cat /tmp/warmup.json || true
             echo
             echo "HTTP ${code}"
             if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ]; then
+              curl -L -sS --max-time 30 "${HEALTH_URL}?source=github-actions&t=$(date +%s)" || true
               exit 0
             fi
             sleep 20
